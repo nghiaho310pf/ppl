@@ -209,6 +209,7 @@ expression_tier_2: (OPERATOR_LOGICAL_NOT | OPERATOR_SUB) expression_tier_2 | exp
 
 expression_tier_1:
     IDENTIFIER
+    | literal_nil
     | literal_int
     | literal_float
     | literal_struct
@@ -270,6 +271,7 @@ array_dimension_chain: SEPARATOR_BRACKET_LEFT (literal_int | IDENTIFIER) SEPARAT
 
 // Literal syntax
 
+literal_nil: KEYWORD_NIL;
 literal_bool: KEYWORD_TRUE | KEYWORD_FALSE;
 literal_int: LITERAL_DECIMAL_INT | LITERAL_BINARY_INT | LITERAL_OCTAL_INT | LITERAL_HEX_INT;
 literal_float: LITERAL_FLOAT;
@@ -283,6 +285,7 @@ array_literal_value_chain: array_literal_value (comma_separation array_literal_v
 
 array_literal_value:
     IDENTIFIER
+    | literal_nil
     | literal_bool
     | literal_int
     | literal_float

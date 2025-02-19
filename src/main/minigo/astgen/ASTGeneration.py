@@ -4,9 +4,6 @@ from AST import *
 
 from src.main.minigo.utils.AST import VoidType
 
-
-# for IDE compat:
-
 class ASTGeneration(MiniGoVisitor):
     # See: program
     def visitProgram(self, ctx: MiniGoParser.ProgramContext):
@@ -101,41 +98,37 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: statement_chain
     def visitStatement_chain(self, ctx: MiniGoParser.Statement_chainContext):
-        statements = []
-
-        if ctx.constant_declaration():
-            pass
-        if ctx.variable_declaration():
-            pass
-        if ctx.assigning_statement():
-            pass
-        if ctx.conditional_statement():
-            pass
-        if ctx.while_loop_statement():
-            pass
-        if ctx.c_style_for_loop_statement():
-            pass
-        if ctx.iteration_for_loop_statement():
-            pass
-        if ctx.direct_function_call():
-            pass
-        if ctx.method_call():
-            pass
-        if ctx.break_statement():
-            pass
-        if ctx.continue_statement():
-            pass
-        if ctx.return_statement():
-            pass
-
+        one_statement = [self.visit(ctx.statement())]
         if ctx.statement_chain():
-            return statements + self.visit(ctx.statement_chain())
-
-        return statements
+            return one_statement + self.visit(ctx.statement_chain())
+        return one_statement
 
     # See: statement
     def visitStatement(self, ctx: MiniGoParser.StatementContext):
-        return self.visitChildren(ctx)
+        if ctx.constant_declaration():
+            return self.visit(ctx.constant_declaration())
+        if ctx.variable_declaration():
+            return self.visit(ctx.variable_declaration())
+        if ctx.assigning_statement():
+            return self.visit(ctx.assigning_statement())
+        if ctx.conditional_statement():
+            return self.visit(ctx.conditional_statement())
+        if ctx.while_loop_statement():
+            return self.visit(ctx.while_loop_statement())
+        if ctx.c_style_for_loop_statement():
+            return self.visit(ctx.c_style_for_loop_statement())
+        if ctx.iteration_for_loop_statement():
+            return self.visit(ctx.iteration_for_loop_statement())
+        if ctx.direct_function_call():
+            return self.visit(ctx.direct_function_call())
+        if ctx.method_call():
+            return self.visit(ctx.method_call())
+        if ctx.break_statement():
+            return self.visit(ctx.break_statement())
+        if ctx.continue_statement():
+            return self.visit(ctx.continue_statement())
+        if ctx.return_statement():
+            return self.visit(ctx.return_statement())
 
     # See: assigning_statement
     def visitAssigning_statement(self, ctx: MiniGoParser.Assigning_statementContext):
@@ -171,15 +164,15 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: break_statement
     def visitBreak_statement(self, ctx: MiniGoParser.Break_statementContext):
-        return self.visitChildren(ctx)
+        return Break()
 
     # See: continue_statement
     def visitContinue_statement(self, ctx: MiniGoParser.Continue_statementContext):
-        return self.visitChildren(ctx)
+        return Continue()
 
     # See: return_statement
     def visitReturn_statement(self, ctx: MiniGoParser.Return_statementContext):
-        return self.visitChildren(ctx)
+        return Return(self.visit(ctx.expression()) if ctx.expression() else None)
 
     # See: expression
     def visitExpression(self, ctx: MiniGoParser.ExpressionContext):
@@ -188,7 +181,6 @@ class ASTGeneration(MiniGoVisitor):
     # See: expression_tier_6
     def visitExpression_tier_6(self, ctx: MiniGoParser.Expression_tier_6Context):
         return self.visitChildren(ctx)
-
 
     # See: expression_tier_5
     def visitExpression_tier_5(self, ctx: MiniGoParser.Expression_tier_5Context):
