@@ -7,6 +7,9 @@ from antlr4 import *
 #Make sure that ANTLR_JAR is set to antlr-4.9.2-complete.jar
 ANTLR_JAR = os.environ.get('ANTLR_JAR')
 TARGET = '../target/main/minigo/parser' if os.name == 'posix' else os.path.normpath('../target/')
+JAVA_EXE_PATH = os.environ.get('JAVA_EXE_PATH') or "java"
+JAVAC_EXE_PATH = os.environ.get('JAVAC_EXE_PATH') or "javac"
+
 locpath = ['./main/minigo/parser/','./main/minigo/astgen/','./main/minigo/utils/']
 for p in locpath:
     if not p in sys.path:
@@ -17,7 +20,7 @@ def main(argv):
     if len(argv) < 1:
         printUsage()
     elif argv[0] == 'gen':
-        subprocess.run(["java","-jar",ANTLR_JAR,"-o","../target","-no-listener","-visitor","main/minigo/parser/MiniGo.g4"])
+        subprocess.run([JAVA_EXE_PATH,"-jar",ANTLR_JAR,"-o","../target","-no-listener","-visitor","main/minigo/parser/MiniGo.g4"])
     elif argv[0] == 'clean':
         subprocess.run(["rm","-rf","../target/main"])
     elif argv[0] == '-assign1':
@@ -52,38 +55,90 @@ def main(argv):
         elif argv[1] == 'LexerSuite':
             from LexerSuite import LexerSuite
             suite = unittest.TestLoader().loadTestsFromTestCase(LexerSuite)
-            test(suite)
+            test(argv, suite)
         elif argv[1] == 'ParserSuite':
             from ParserSuite import ParserSuite
             suite = unittest.TestLoader().loadTestsFromTestCase(ParserSuite)
-            test(suite)
+            test(argv, suite)
         elif argv[1] == 'ASTGenSuite':
             from ASTGenSuite import ASTGenSuite
             suite = unittest.TestLoader().loadTestsFromTestCase(ASTGenSuite)
-            test(suite)
+            test(argv, suite)
         else:
             printUsage()
     else:
         printUsage()
-    
 
-def test(suite):
+def getAndTest(argv, cls):
+    loader = unittest.TestLoader()
+    suite = loader.loadTestsFromTestCase(cls)
+    test(argv, suite)
+
+def getAndTestFucntion(argv, cls, nameFunction):
+    suite = unittest.TestSuite()
+    suite.addTest(cls(nameFunction))
+    test(argv, suite)
+
+def generate_repeating_sequence(size):
+    base_sequence = "1234567890"
+    repeated_sequence = (base_sequence * ((size // len(base_sequence)) + 1))[:size]
+    return repeated_sequence
+
+def printMiniGo(argv, stream, result):
+    print("----------------------------------------------------------------------")
+    print(f'Tests run: {result.testsRun}')
+
+    stream.seek(0)
+    expect = stream.readline()
+    print(generate_repeating_sequence(len(expect) - 1))
+
+    styled_expect = ''.join(
+        f"{c}" if c == 'E' else
+        f"{c}" if c == 'F' else
+        f"{c}" if c == '.' else c
+        for c in expect
+    )
+    print(styled_expect, end='')
+
+    listErrors = []
+    listFailures = []
+    for i in range(1, len(expect)):
+        if expect[i - 1] == 'E': listErrors.append(i)
+        elif expect[i - 1] == 'F': listFailures.append(i)
+
+    errors_str = ", ".join(map(str, listErrors))
+    failures_str = ", ".join(map(str, listFailures))
+
+    if len(listFailures) + len(listErrors):
+        Pass = 100.0 * (1 - (len(listFailures) + len(listErrors)) / (len(expect) - 1))
+        print(f"\nPass     : {Pass:.2f} %")
+        print(f"Errors   : {errors_str}")
+        print(f"Failures : {failures_str}")
+    else:
+        print(f"Pass full 10.")
+    print("----------------------------------------------------------------------")
+
+def test(argv, suite):
     from pprint import pprint
     from io import StringIO
     stream = StringIO()
     runner = unittest.TextTestRunner(stream=stream)
     result = runner.run(suite)
-    print('Tests run ', result.testsRun)
-    print('Errors ', result.errors)
-    pprint(result.failures)
     stream.seek(0)
-    print('Test output\n', stream.read())
+    print(stream.read())
+    # printMiniGo(argv, stream, result)
+
 
 def printUsage():
-    print("python3 run.py gen")
-    print("python3 run.py test LexerSuite")
-    print("python3 run.py test ParserSuite")
-    print("python3 run.py test ASTGenSuite")
+    print("Usage:")
+    print("  python3 run.py gen                            # Generate required files")
+    print("  python3 run.py test LexerSuite [test_case]    # Run LexerSuite tests (test_case is optional)")
+    print("  python3 run.py test ParserSuite [test_case]   # Run ParserSuite tests (test_case is optional)")
+    print("  python3 run.py test ASTGenSuite [test_case]   # Run ASTGenSuite tests (test_case is optional)")
+    print()
+    print("Notes:")
+    print("  - Replace [test_case] with the specific test you want to run, e.g., test_1.")
+    print("  - If [test_case] is not provided, all tests in the suite will be executed.")
 
 if __name__ == "__main__":
-   main(sys.argv[1:])
+    main(sys.argv[1:])

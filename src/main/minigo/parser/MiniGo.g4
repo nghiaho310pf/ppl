@@ -1,8 +1,5 @@
 grammar MiniGo;
 
-// Welcome to another episode of "you're better off writing your own
-// recursive-descent lexer and parser"
-
 @lexer::header {
 from lexererr import *
 from antlr4.Token import CommonToken

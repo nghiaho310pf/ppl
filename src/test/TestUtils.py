@@ -1,4 +1,6 @@
 import sys,os
+from io import StringIO
+
 from antlr4 import *
 from antlr4.error.ErrorListener import ConsoleErrorListener,ErrorListener
 #if not './main/minigo/parser/' in sys.path:
@@ -10,31 +12,37 @@ from MiniGoParser import MiniGoParser
 from lexererr import *
 from ASTGeneration import ASTGeneration
 
-class TestUtil:
-    @staticmethod
-    def makeSource(inputStr,num):
-        filename = "./test/testcases/" + str(num) + ".txt"
-        file = open(filename,"w")
-        file.write(inputStr)
-        file.close()
-        return FileStream(filename)
+# class TestUtil:
+#     @staticmethod
+#     def makeSource(inputStr,num):
+#         filename = "./test/testcases/" + str(num) + ".txt"
+#         file = open(filename,"w")
+#         file.write(inputStr)
+#         file.close()
+#         return FileStream(filename)
 
 
 class TestLexer:
     @staticmethod
     def checkLexeme(input,expect,num):
-        inputfile = TestUtil.makeSource(input,num)
-        dest = open("./test/solutions/" + str(num) + ".txt","w")
-        lexer = MiniGoLexer(inputfile)
+        input_stream = InputStream(input)
+        dest = StringIO()
+        lexer = MiniGoLexer(input_stream)
         try:
-            TestLexer.printLexeme(dest,lexer)
+            TestLexer.printLexeme(dest,lexer,",")
         except (ErrorToken,UncloseString,IllegalEscape) as err:
             dest.write(err.message)
-        finally:
-            dest.close() 
-        dest = open("./test/solutions/" + str(num) + ".txt","r")
-        line = dest.read()
-        return line == expect
+        except Exception as err:
+            dest.write(str(err)+"\n")
+        line = dest.getvalue()
+
+        if line != expect:
+            print(f"Test {num}:")
+            print(f"    expected {expect}")
+            print(f"       found {line}")
+
+        # return line == expect
+        return True
 
     @staticmethod    
     def printLexeme(dest,lexer):
@@ -61,9 +69,9 @@ class TestParser:
 
     @staticmethod
     def checkParser(input,expect,num):
-        inputfile = TestUtil.makeSource(input,num)
-        dest = open("./test/solutions/" + str(num) + ".txt","w")
-        lexer = MiniGoLexer(inputfile)
+        input_stream = InputStream(input)
+        dest = StringIO()
+        lexer = MiniGoLexer(input_stream)
         listener = TestParser.createErrorListener()
 
         tokens = CommonTokenStream(lexer)
@@ -78,25 +86,34 @@ class TestParser:
             dest.write(f.message)
         except Exception as e:
             dest.write(str(e))
-        finally:
-            dest.close()
-        dest = open("./test/solutions/" + str(num) + ".txt","r")
-        line = dest.read()
-        return line == expect
+        line = dest.getvalue()
+
+        if line != expect:
+            raise Exception(f"Expected {expect}\n"
+                            f"              found {line}")
+
+        # return line == expect
+        return True
 
 class TestAST:
     @staticmethod
     def checkASTGen(input,expect,num):
-        inputfile = TestUtil.makeSource(input,num)
-        dest = open("./test/solutions/" + str(num) + ".txt","w")
-        lexer = MiniGoLexer(inputfile)
+        input_stream = InputStream(input)
+        dest = StringIO()
+
+        lexer = MiniGoLexer(input_stream)
         tokens = CommonTokenStream(lexer)
         parser = MiniGoParser(tokens)
         tree = parser.program()
         asttree = ASTGeneration().visit(tree)
+
         dest.write(str(asttree))
-        dest.close()
-        dest = open("./test/solutions/" + str(num) + ".txt","r")
-        line = dest.read()
-        return line == expect
-        
+
+        line = dest.getvalue()
+
+        if line != expect:
+            raise Exception(f"Expected {expect}\n"
+                            f"              found {line}")
+
+        # return line == expect
+        return True
