@@ -280,6 +280,10 @@ class ASTGeneration(MiniGoVisitor):
     def visitArray_dimension_chain(self, ctx: MiniGoParser.Array_dimension_chainContext):
         return self.visitChildren(ctx)
 
+    # See: literal_nil
+    def visitLiteral_nil(self, ctx:MiniGoParser.Literal_nilContext):
+        return NilLiteral()
+
     # See: literal_bool
     def visitLiteral_bool(self, ctx: MiniGoParser.Literal_boolContext):
         return self.visitChildren(ctx)
