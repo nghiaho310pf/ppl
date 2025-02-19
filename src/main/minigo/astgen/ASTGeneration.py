@@ -86,7 +86,11 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: variable_declaration
     def visitVariable_declaration(self, ctx: MiniGoParser.Variable_declarationContext):
-        return self.visitChildren(ctx)
+        variable_name = ctx.IDENTIFIER().getText()
+        variable_type = self.visit(ctx.typename()) if ctx.typename() else None
+        variable_initialization = self.visit(ctx.expression()) if ctx.expression() else None
+
+        return VarDecl(variable_name, variable_type, variable_initialization)
 
     # See: initialized_primitive_variable_declaration
     def visitInitialized_primitive_variable_declaration(self, ctx: MiniGoParser.Initialized_primitive_variable_declarationContext):
@@ -248,7 +252,10 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: typename
     def visitTypename(self, ctx: MiniGoParser.TypenameContext):
-        return self.visitChildren(ctx)
+        if ctx.primitive_typename():
+            return self.visit(ctx.primitive_typename())
+        if ctx.IDENTIFIER():
+            return StructType(ctx.IDENTIFIER().getText(), [], [])
 
     # See: non_array_typename
     def visitNon_array_typename(self, ctx: MiniGoParser.Non_array_typenameContext):
@@ -256,7 +263,14 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: primitive_typename
     def visitPrimitive_typename(self, ctx: MiniGoParser.Primitive_typenameContext):
-        return self.visitChildren(ctx)
+        if ctx.KEYWORD_STRING():
+            return StringType()
+        if ctx.KEYWORD_INT():
+            return IntType()
+        if ctx.KEYWORD_FLOAT():
+            return FloatType()
+        if ctx.KEYWORD_BOOLEAN():
+            return BoolType()
 
     # See: array_typename
     def visitArray_typename(self, ctx: MiniGoParser.Array_typenameContext):
