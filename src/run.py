@@ -1,3 +1,4 @@
+import glob
 import sys,os,traceback
 sys.path.append('./test/')
 import subprocess
@@ -22,7 +23,9 @@ def main(argv):
     elif argv[0] == 'gen':
         subprocess.run([JAVA_EXE_PATH,"-jar",ANTLR_JAR,"-o","../target","-no-listener","-visitor","main/minigo/parser/MiniGo.g4"])
     elif argv[0] == 'clean':
-        subprocess.run(["rm","-rf","../target/main"])
+        files = glob.glob(f'{TARGET}/MiniGo*')
+        for f in files:
+            os.remove(f)
     elif argv[0] == '-assign1':
         from TestUtils import TestLexer,TestParser
         lexstart = int(argv[1])
