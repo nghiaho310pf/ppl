@@ -2,6 +2,11 @@ from MiniGoVisitor import MiniGoVisitor
 from MiniGoParser import MiniGoParser
 from AST import *
 
+from src.main.minigo.utils.AST import VoidType
+
+
+# for IDE compat:
+
 class ASTGeneration(MiniGoVisitor):
     # See: program
     def visitProgram(self, ctx: MiniGoParser.ProgramContext):
@@ -20,8 +25,10 @@ class ASTGeneration(MiniGoVisitor):
             declarations.append(self.visit(ctx.constant_declaration()))
         if ctx.variable_declaration():
             declarations.append(self.visit(ctx.variable_declaration()))
+
         if ctx.declaration_chain():
             return declarations + self.visit(ctx.declaration_chain())
+
         return declarations
 
     # See: struct_declaration
@@ -42,11 +49,31 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: function_declaration
     def visitFunction_declaration(self, ctx: MiniGoParser.Function_declarationContext):
-        return self.visitChildren(ctx)
+        receiver_name, receiver_type = self.visit(ctx.function_receiver_type()) if ctx.function_receiver_type() else (None, None)
+
+        function_name = ctx.IDENTIFIER().getText()
+        function_args = self.visit(ctx.function_parameter_chain()) if ctx.function_parameter_chain() else []
+        function_return_type = self.visit(ctx.typename()) if ctx.typename() else VoidType()
+        function_body = self.visit(ctx.codeblock())
+
+        func = FuncDecl(
+            function_name,
+            function_args,
+            function_return_type,
+            function_body
+        )
+
+        if receiver_name is not None:
+            return MethodDecl(receiver_name, receiver_type, func)
+
+        return func
 
     # See: function_receiver_type
     def visitFunction_receiver_type(self, ctx: MiniGoParser.Function_receiver_typeContext):
-        return self.visitChildren(ctx)
+        receiver_name = ctx.IDENTIFIER()
+        receiver_type = self.visit(ctx.typename())
+
+        return receiver_name, receiver_type
 
     # See: function_parameter_chain
     def visitFunction_parameter_chain(self, ctx: MiniGoParser.Function_parameter_chainContext):
@@ -70,11 +97,41 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: codeblock
     def visitCodeblock(self, ctx: MiniGoParser.CodeblockContext):
-        return self.visitChildren(ctx)
+        return Block(self.visit(ctx.statement_chain()) if ctx.statement_chain() else [])
 
     # See: statement_chain
     def visitStatement_chain(self, ctx: MiniGoParser.Statement_chainContext):
-        return self.visitChildren(ctx)
+        statements = []
+
+        if ctx.constant_declaration():
+            pass
+        if ctx.variable_declaration():
+            pass
+        if ctx.assigning_statement():
+            pass
+        if ctx.conditional_statement():
+            pass
+        if ctx.while_loop_statement():
+            pass
+        if ctx.c_style_for_loop_statement():
+            pass
+        if ctx.iteration_for_loop_statement():
+            pass
+        if ctx.direct_function_call():
+            pass
+        if ctx.method_call():
+            pass
+        if ctx.break_statement():
+            pass
+        if ctx.continue_statement():
+            pass
+        if ctx.return_statement():
+            pass
+
+        if ctx.statement_chain():
+            return statements + self.visit(ctx.statement_chain())
+
+        return statements
 
     # See: statement
     def visitStatement(self, ctx: MiniGoParser.StatementContext):
