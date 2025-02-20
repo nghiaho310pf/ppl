@@ -58,79 +58,27 @@ def main(argv):
         elif argv[1] == 'LexerSuite':
             from LexerSuite import LexerSuite
             suite = unittest.TestLoader().loadTestsFromTestCase(LexerSuite)
-            test(argv, suite)
+            test(suite)
         elif argv[1] == 'ParserSuite':
             from ParserSuite import ParserSuite
             suite = unittest.TestLoader().loadTestsFromTestCase(ParserSuite)
-            test(argv, suite)
+            test(suite)
         elif argv[1] == 'ASTGenSuite':
             from ASTGenSuite import ASTGenSuite
             suite = unittest.TestLoader().loadTestsFromTestCase(ASTGenSuite)
-            test(argv, suite)
+            test(suite)
         else:
             printUsage()
     else:
         printUsage()
 
-def getAndTest(argv, cls):
-    loader = unittest.TestLoader()
-    suite = loader.loadTestsFromTestCase(cls)
-    test(argv, suite)
-
-def getAndTestFucntion(argv, cls, nameFunction):
-    suite = unittest.TestSuite()
-    suite.addTest(cls(nameFunction))
-    test(argv, suite)
-
-def generate_repeating_sequence(size):
-    base_sequence = "1234567890"
-    repeated_sequence = (base_sequence * ((size // len(base_sequence)) + 1))[:size]
-    return repeated_sequence
-
-def printMiniGo(argv, stream, result):
-    print("----------------------------------------------------------------------")
-    print(f'Tests run: {result.testsRun}')
-
-    stream.seek(0)
-    expect = stream.readline()
-    print(generate_repeating_sequence(len(expect) - 1))
-
-    styled_expect = ''.join(
-        f"{c}" if c == 'E' else
-        f"{c}" if c == 'F' else
-        f"{c}" if c == '.' else c
-        for c in expect
-    )
-    print(styled_expect, end='')
-
-    listErrors = []
-    listFailures = []
-    for i in range(1, len(expect)):
-        if expect[i - 1] == 'E': listErrors.append(i)
-        elif expect[i - 1] == 'F': listFailures.append(i)
-
-    errors_str = ", ".join(map(str, listErrors))
-    failures_str = ", ".join(map(str, listFailures))
-
-    if len(listFailures) + len(listErrors):
-        Pass = 100.0 * (1 - (len(listFailures) + len(listErrors)) / (len(expect) - 1))
-        print(f"\nPass     : {Pass:.2f} %")
-        print(f"Errors   : {errors_str}")
-        print(f"Failures : {failures_str}")
-    else:
-        print(f"Pass full 10.")
-    print("----------------------------------------------------------------------")
-
-def test(argv, suite):
-    from pprint import pprint
+def test(suite):
     from io import StringIO
     stream = StringIO()
     runner = unittest.TextTestRunner(stream=stream)
-    result = runner.run(suite)
+    runner.run(suite)
     stream.seek(0)
     print(stream.read())
-    # printMiniGo(argv, stream, result)
-
 
 def printUsage():
     print("Usage:")
