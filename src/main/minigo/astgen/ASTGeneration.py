@@ -33,19 +33,35 @@ class ASTGeneration(MiniGoVisitor):
         struct_name = ctx.IDENTIFIER().getText()
         struct_fields = self.visit(ctx.struct_field_chain()) if ctx.struct_field_chain() else []
 
-        # TODO:
+        # NOTE: Nothing in methods for now, apparently it's filled out in static analysis.
+        return StructType(struct_name, struct_fields, [])
 
     # See: struct_field_chain
     def visitStruct_field_chain(self, ctx: MiniGoParser.Struct_field_chainContext):
-        return self.visitChildren(ctx)
+        field_name = ctx.IDENTIFIER().getText()
+        field_type = self.visit(ctx.typename())
+
+        one_struct_field = [(field_name, field_type)]
+        return (one_struct_field + self.visit(ctx.struct_field_chain())) if ctx.struct_field_chain() else one_struct_field
 
     # See: interface_declaration
     def visitInterface_declaration(self, ctx: MiniGoParser.Interface_declarationContext):
-        return self.visitChildren(ctx)
+        interface_name = ctx.IDENTIFIER().getText()
+        interface_methods = self.visit(ctx.interface_method_chain()) if ctx.interface_method_chain() else []
+
+        return InterfaceType(interface_name, interface_methods)
 
     # See: interface_method_chain
     def visitInterface_method_chain(self, ctx: MiniGoParser.Interface_method_chainContext):
-        return self.visitChildren(ctx)
+        method_name = ctx.IDENTIFIER().getText()
+        named_parameters = self.visit(ctx.function_parameter_chain()) if ctx.function_parameter_chain() else []
+        return_type = self.visit(ctx.typename()) if ctx.typename() else VoidType()
+
+        # Prototype wants UNNAMED parameters so we just drop the name.
+        unnamed_parameters = [typename for parameter_name, typename in named_parameters]
+
+        one_method = [Prototype(method_name, unnamed_parameters, return_type)]
+        return (one_method + self.visit(ctx.interface_method_chain())) if ctx.interface_method_chain() else one_method
 
     # See: function_declaration
     def visitFunction_declaration(self, ctx: MiniGoParser.Function_declarationContext):
@@ -63,10 +79,7 @@ class ASTGeneration(MiniGoVisitor):
             function_body
         )
 
-        if receiver_name is not None:
-            return MethodDecl(receiver_name, receiver_type, func)
-
-        return func
+        return MethodDecl(receiver_name, receiver_type, func) if receiver_name is not None else func
 
     # See: function_receiver_type
     def visitFunction_receiver_type(self, ctx: MiniGoParser.Function_receiver_typeContext):
@@ -77,18 +90,24 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: function_parameter_chain
     def visitFunction_parameter_chain(self, ctx: MiniGoParser.Function_parameter_chainContext):
-        return self.visitChildren(ctx)
+        parameter_names = self.visit(ctx.comma_separated_identifier_chain())
+        typename = self.visit(ctx.typename())
+
+        parameters = [(parameter_name, typename) for parameter_name in parameter_names]
+        return (parameters + self.visit(ctx.function_parameter_chain())) if ctx.function_parameter_chain() else parameters
 
     # See: comma_separated_identifier_chain
     def visitComma_separated_identifier_chain(self, ctx: MiniGoParser.Comma_separated_identifier_chainContext):
         one_identifier = [ctx.IDENTIFIER().getText()]
-        if ctx.comma_separated_identifier_chain():
-            return one_identifier + self.visit(ctx.comma_separated_identifier_chain())
-        return one_identifier
+        return (one_identifier + self.visit(ctx.comma_separated_identifier_chain())) if ctx.comma_separated_identifier_chain() else one_identifier
 
     # See: constant_declaration
     def visitConstant_declaration(self, ctx: MiniGoParser.Constant_declarationContext):
-        return self.visitChildren(ctx)
+        constant_name = ctx.IDENTIFIER().getText()
+        constant_type = self.visit(ctx.typename()) if ctx.typename() else None
+        constant_initialization = self.visit(ctx.expression()) if ctx.expression() else None
+
+        return ConstDecl(constant_name, constant_type, constant_initialization)
 
     # See: variable_declaration
     def visitVariable_declaration(self, ctx: MiniGoParser.Variable_declarationContext):
@@ -98,10 +117,6 @@ class ASTGeneration(MiniGoVisitor):
 
         return VarDecl(variable_name, variable_type, variable_initialization)
 
-    # See: initialized_primitive_variable_declaration
-    def visitInitialized_primitive_variable_declaration(self, ctx: MiniGoParser.Initialized_primitive_variable_declarationContext):
-        return self.visitChildren(ctx)
-
     # See: codeblock
     def visitCodeblock(self, ctx: MiniGoParser.CodeblockContext):
         return Block(self.visit(ctx.statement_chain()) if ctx.statement_chain() else [])
@@ -109,9 +124,7 @@ class ASTGeneration(MiniGoVisitor):
     # See: statement_chain
     def visitStatement_chain(self, ctx: MiniGoParser.Statement_chainContext):
         one_statement = [self.visit(ctx.statement())]
-        if ctx.statement_chain():
-            return one_statement + self.visit(ctx.statement_chain())
-        return one_statement
+        return (one_statement + self.visit(ctx.statement_chain())) if ctx.statement_chain() else one_statement
 
     # See: statement
     def visitStatement(self, ctx: MiniGoParser.StatementContext):
@@ -129,8 +142,8 @@ class ASTGeneration(MiniGoVisitor):
             return self.visit(ctx.c_style_for_loop_statement())
         if ctx.iteration_for_loop_statement():
             return self.visit(ctx.iteration_for_loop_statement())
-        if ctx.direct_function_call():
-            return self.visit(ctx.direct_function_call())
+        if ctx.function_call():
+            return self.visit(ctx.function_call())
         if ctx.expression():
             return self.visit(ctx.expression())
         if ctx.break_statement():
@@ -142,35 +155,87 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: assigning_statement
     def visitAssigning_statement(self, ctx: MiniGoParser.Assigning_statementContext):
-        return self.visitChildren(ctx)
+        lhs = self.visit(ctx.assignment_left_hand_side())
+        rhs = self.visit(ctx.expression())
+
+        operator_ctx: MiniGoParser.Assigning_operatorContext = ctx.assigning_operator()
+        if operator_ctx.OPERATOR_REASSIGN():
+            return Assign(lhs, rhs)
+        if operator_ctx.OPERATOR_ADD_ASSIGN():
+            return Assign(lhs, BinaryOp("+", lhs, rhs))
+        if operator_ctx.OPERATOR_DIV_ASSIGN():
+            return Assign(lhs, BinaryOp("/", lhs, rhs))
+        if operator_ctx.OPERATOR_MUL_ASSIGN():
+            return Assign(lhs, BinaryOp("*", lhs, rhs))
+        if operator_ctx.OPERATOR_SUB_ASSIGN():
+            return Assign(lhs, BinaryOp("-", lhs, rhs))
+        if operator_ctx.OPERATOR_MOD_ASSIGN():
+            return Assign(lhs, BinaryOp("%", lhs, rhs))
 
     # See: assigning_operator
     def visitAssigning_operator(self, ctx: MiniGoParser.Assigning_operatorContext):
-        return self.visitChildren(ctx)
+        # Note that this is unused!
+        operator_str = ctx.getText()
+        return operator_str
 
     # See: assignment_left_hand_side
     def visitAssignment_left_hand_side(self, ctx: MiniGoParser.Assignment_left_hand_sideContext):
-        return self.visitChildren(ctx)
+        if ctx.IDENTIFIER():
+            return Id(ctx.IDENTIFIER().getText())
+        if ctx.struct_member_selection():
+            receiver = self.visit(ctx.assignment_left_hand_side())
+            selection = self.visit(ctx.struct_member_selection())
+            return FieldAccess(receiver, selection)
+        if ctx.array_indexing():
+            receiver = self.visit(ctx.assignment_left_hand_side())
+            indices = self.visit(ctx.array_indexing())
+            return ArrayCell(receiver, indices)
 
     # See: conditional_statement
     def visitConditional_statement(self, ctx: MiniGoParser.Conditional_statementContext):
-        return self.visitChildren(ctx)
+        condition = self.visit(ctx.expression())
+        then_block = self.visit(ctx.codeblock())
+        else_tail = self.visit(ctx.conditional_statement_else_tail()) if ctx.conditional_statement_else_tail() else None
+
+        return If(condition, then_block, else_tail)
+
+    # See: conditional_statement_else_tail
+    def visitConditional_statement_else_tail(self, ctx:MiniGoParser.Conditional_statement_else_tailContext):
+        if ctx.codeblock():
+            return self.visit(ctx.codeblock())
+        if ctx.conditional_statement():
+            return Block([self.visit(ctx.conditional_statement())])
 
     # See: while_loop_statement
     def visitWhile_loop_statement(self, ctx: MiniGoParser.While_loop_statementContext):
-        return self.visitChildren(ctx)
+        condition = self.visit(ctx.expression())
+        block = self.visit(ctx.codeblock())
+
+        return ForBasic(condition, block)
 
     # See: c_style_for_loop_initialization
     def visitC_style_for_loop_initialization(self, ctx: MiniGoParser.C_style_for_loop_initializationContext):
-        return self.visitChildren(ctx)
+        if ctx.assigning_statement():
+            return self.visit(ctx.assigning_statement())
+        return self.visit(ctx.variable_declaration())
 
     # See: c_style_for_loop_statement
     def visitC_style_for_loop_statement(self, ctx: MiniGoParser.C_style_for_loop_statementContext):
-        return self.visitChildren(ctx)
+        initialization = self.visit(ctx.c_style_for_loop_initialization())
+        condition = self.visit(ctx.expression())
+        updater = self.visit(ctx.assigning_statement())
+        block = self.visit(ctx.codeblock())
+
+        return ForStep(initialization, condition, updater, block)
 
     # See: iteration_for_loop_statement
     def visitIteration_for_loop_statement(self, ctx: MiniGoParser.Iteration_for_loop_statementContext):
-        return self.visitChildren(ctx)
+        index_var_identifier = ctx.IDENTIFIER(0)
+        value_var_identifier = ctx.IDENTIFIER(1)
+        target = self.visit(ctx.expression())
+        block = self.visit(ctx.codeblock())
+
+        return ForEach(index_var_identifier, value_var_identifier, target, block)
 
     # See: break_statement
     def visitBreak_statement(self, ctx: MiniGoParser.Break_statementContext):
@@ -186,35 +251,115 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: expression
     def visitExpression(self, ctx: MiniGoParser.ExpressionContext):
-        return self.visitChildren(ctx)
+        if ctx.expression():
+            return BinaryOp("||", self.visit(ctx.expression()), self.visit(ctx.expression_tier_6()))
+        return self.visit(ctx.expression_tier_6())
 
     # See: expression_tier_6
     def visitExpression_tier_6(self, ctx: MiniGoParser.Expression_tier_6Context):
-        return self.visitChildren(ctx)
+        if ctx.expression_tier_6():
+            return BinaryOp("&&", self.visit(ctx.expression_tier_6()), self.visit(ctx.expression_tier_5()))
+        return self.visit(ctx.expression_tier_5())
 
     # See: expression_tier_5
     def visitExpression_tier_5(self, ctx: MiniGoParser.Expression_tier_5Context):
-        return self.visitChildren(ctx)
+        if ctx.expression_tier_5():
+            operator = None
+            if ctx.OPERATOR_EQ():
+                operator = ctx.OPERATOR_EQ().getText()
+            if ctx.OPERATOR_INEQ():
+                operator = ctx.OPERATOR_INEQ().getText()
+            if ctx.OPERATOR_LESS():
+                operator = ctx.OPERATOR_LESS().getText()
+            if ctx.OPERATOR_LESS_EQ():
+                operator = ctx.OPERATOR_LESS_EQ().getText()
+            if ctx.OPERATOR_GREATER():
+                operator = ctx.OPERATOR_GREATER().getText()
+            if ctx.OPERATOR_GREATER_EQ():
+                operator = ctx.OPERATOR_GREATER_EQ().getText()
+            return BinaryOp(operator, self.visit(ctx.expression_tier_5()), self.visit(ctx.expression_tier_4()))
+        return self.visit(ctx.expression_tier_4())
 
     # See: expression_tier_4
     def visitExpression_tier_4(self, ctx: MiniGoParser.Expression_tier_4Context):
-        return self.visitChildren(ctx)
+        if ctx.expression_tier_4():
+            operator = None
+            if ctx.OPERATOR_ADD():
+                operator = ctx.OPERATOR_ADD().getText()
+            if ctx.OPERATOR_SUB():
+                operator = ctx.OPERATOR_SUB().getText()
+            return BinaryOp(operator, self.visit(ctx.expression_tier_4()), self.visit(ctx.expression_tier_3()))
+        return self.visit(ctx.expression_tier_3())
 
     # See: expression_tier_3
     def visitExpression_tier_3(self, ctx: MiniGoParser.Expression_tier_3Context):
-        return self.visitChildren(ctx)
+        if ctx.expression_tier_3():
+            operator = None
+            if ctx.OPERATOR_MUL():
+                operator = ctx.OPERATOR_MUL().getText()
+            if ctx.OPERATOR_DIV():
+                operator = ctx.OPERATOR_DIV().getText()
+            if ctx.OPERATOR_MOD():
+                operator = ctx.OPERATOR_MOD().getText()
+            return BinaryOp(operator, self.visit(ctx.expression_tier_3()), self.visit(ctx.expression_tier_2()))
+        return self.visit(ctx.expression_tier_2())
 
     # See: expression_tier_2
     def visitExpression_tier_2(self, ctx: MiniGoParser.Expression_tier_2Context):
-        return self.visitChildren(ctx)
+        if ctx.expression_tier_2():
+            operator = None
+            if ctx.OPERATOR_LOGICAL_NOT():
+                operator = ctx.OPERATOR_LOGICAL_NOT().getText()
+            if ctx.OPERATOR_SUB():
+                operator = ctx.OPERATOR_SUB().getText()
+            return UnaryOp(operator, self.visit(ctx.expression_tier_2()))
+        return self.visit(ctx.expression_tier_1())
 
     # See: expression_tier_1
     def visitExpression_tier_1(self, ctx: MiniGoParser.Expression_tier_1Context):
-        return self.visitChildren(ctx)
+        if ctx.IDENTIFIER():
+            return Id(ctx.IDENTIFIER().getText())
 
-    # See: direct_function_call
-    def visitDirect_function_call(self, ctx: MiniGoParser.Direct_function_callContext):
-        return self.visitChildren(ctx)
+        if ctx.literal_nil():
+            return self.visit(ctx.literal_nil())
+        if ctx.literal_int():
+            return self.visit(ctx.literal_int())
+        if ctx.literal_float():
+            return self.visit(ctx.literal_float())
+        if ctx.literal_struct():
+            return self.visit(ctx.literal_struct())
+        if ctx.literal_bool():
+            return self.visit(ctx.literal_bool())
+        if ctx.literal_string():
+            return self.visit(ctx.literal_string())
+        if ctx.literal_array():
+            return self.visit(ctx.literal_array())
+
+        if ctx.expression():
+            return self.visit(ctx.expression())
+
+        if ctx.method_call():
+            receiver = self.visit(ctx.expression_tier_1())
+            method_name, call_args = self.visit(ctx.method_call())
+            return MethCall(receiver, method_name, call_args)
+        if ctx.struct_member_selection():
+            receiver = self.visit(ctx.expression_tier_1())
+            field_name = self.visit(ctx.struct_member_selection())
+            return FieldAccess(receiver, field_name)
+        if ctx.array_indexing():
+            receiver = self.visit(ctx.expression_tier_1())
+            indices = self.visit(ctx.method_call())
+            return ArrayCell(receiver, indices)
+
+        if ctx.function_call():
+            return self.visit(ctx.expression())
+
+    # See: function_call
+    def visitFunction_call(self, ctx: MiniGoParser.Function_callContext):
+        function_name = ctx.IDENTIFIER().getText()
+        call_args = self.visit(ctx.call_syntax())
+
+        return FuncCall(function_name, call_args)
 
     # See: method_call
     def visitMethod_call(self, ctx: MiniGoParser.Method_callContext):
@@ -225,22 +370,20 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: struct_member_selection
     def visitStruct_member_selection(self, ctx: MiniGoParser.Struct_member_selectionContext):
-        return self.visitChildren(ctx)
+        return ctx.IDENTIFIER().getText()
 
     # See: array_indexing
     def visitArray_indexing(self, ctx: MiniGoParser.Array_indexingContext):
-        return self.visitChildren(ctx)
+        return self.visit(ctx.comma_separated_expression_chain())
 
     # See: call_syntax
     def visitCall_syntax(self, ctx: MiniGoParser.Call_syntaxContext):
-        return self.visit(ctx.function_call_parameter_chain())
+        return self.visit(ctx.comma_separated_expression_chain())
 
-    # See: function_call_parameter_chain
-    def visitFunction_call_parameter_chain(self, ctx: MiniGoParser.Function_call_parameter_chainContext):
-        one_parameter_expression = [self.visit(ctx.expression())]
-        if ctx.function_call_parameter_chain():
-            return one_parameter_expression + self.visit(ctx.function_call_parameter_chain())
-        return one_parameter_expression
+    # See: comma_separated_expression_chain
+    def visitComma_separated_expression_chain(self, ctx: MiniGoParser.Comma_separated_expression_chainContext):
+        one_parameter = [self.visit(ctx.expression())]
+        return (one_parameter + self.visit(ctx.comma_separated_expression_chain())) if ctx.comma_separated_expression_chain() else one_parameter
 
     # See: typename
     def visitTypename(self, ctx: MiniGoParser.TypenameContext):
@@ -249,9 +392,14 @@ class ASTGeneration(MiniGoVisitor):
         if ctx.IDENTIFIER():
             return StructType(ctx.IDENTIFIER().getText(), [], [])
 
+        # TODO: missing array_typename!
+
     # See: non_array_typename
     def visitNon_array_typename(self, ctx: MiniGoParser.Non_array_typenameContext):
-        return self.visitChildren(ctx)
+        if ctx.primitive_typename():
+            return self.visit(ctx.primitive_typename())
+        if ctx.IDENTIFIER():
+            return StructType(ctx.IDENTIFIER().getText(), [], [])
 
     # See: primitive_typename
     def visitPrimitive_typename(self, ctx: MiniGoParser.Primitive_typenameContext):
@@ -278,27 +426,46 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: literal_bool
     def visitLiteral_bool(self, ctx: MiniGoParser.Literal_boolContext):
-        return self.visitChildren(ctx)
+        if ctx.KEYWORD_TRUE():
+            return BooleanLiteral(True)
+        return BooleanLiteral(False)
 
     # See: literal_int
     def visitLiteral_int(self, ctx: MiniGoParser.Literal_intContext):
-        return self.visitChildren(ctx)
+        if ctx.LITERAL_DECIMAL_INT():
+            return IntLiteral(int(ctx.LITERAL_DECIMAL_INT().getText()))
+        if ctx.LITERAL_BINARY_INT():
+            # The 0b prefix is there, it will handle it.
+            return IntLiteral(int(ctx.LITERAL_BINARY_INT().getText()))
+        if ctx.LITERAL_OCTAL_INT():
+            # The 0o prefix is there, it will handle it.
+            return IntLiteral(int(ctx.LITERAL_OCTAL_INT().getText()))
+        if ctx.LITERAL_HEX_INT():
+            # The 0x prefix is there, it will handle it.
+            return IntLiteral(int(ctx.LITERAL_HEX_INT().getText()))
 
     # See: literal_float
     def visitLiteral_float(self, ctx: MiniGoParser.Literal_floatContext):
-        return self.visitChildren(ctx)
+        return FloatLiteral(float(ctx.LITERAL_FLOAT().getText()))
 
     # See: literal_string
     def visitLiteral_string(self, ctx: MiniGoParser.Literal_stringContext):
-        return self.visitChildren(ctx)
+        return StringLiteral(ctx.LITERAL_STRING().getText())
 
     # See: literal_struct
     def visitLiteral_struct(self, ctx: MiniGoParser.Literal_structContext):
-        return self.visitChildren(ctx)
+        struct_name = ctx.IDENTIFIER().getText()
+        field_initializers = self.visit(ctx.struct_field_initializer_chain()) if ctx.struct_field_initializer_chain() else []
+
+        return StructLiteral(struct_name, field_initializers)
 
     # See: struct_field_initializer_chain
     def visitStruct_field_initializer_chain(self, ctx: MiniGoParser.Struct_field_initializer_chainContext):
-        return self.visitChildren(ctx)
+        field_name = ctx.IDENTIFIER().getText()
+        field_value = self.visit(ctx.expression())
+
+        one_field = [(field_name, field_value)]
+        return (one_field + self.visit(ctx.struct_field_initializer_chain())) if ctx.struct_field_initializer_chain() else one_field
 
     # See: literal_array
     def visitLiteral_array(self, ctx: MiniGoParser.Literal_arrayContext):

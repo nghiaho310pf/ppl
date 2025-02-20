@@ -124,8 +124,6 @@ comma_separated_identifier_chain: IDENTIFIER (comma_separation comma_separated_i
 constant_declaration: KEYWORD_CONST IDENTIFIER (typename? OPERATOR_INITIALIZE expression | typename);
 variable_declaration: KEYWORD_VAR IDENTIFIER (typename? OPERATOR_INITIALIZE expression | typename);
 
-initialized_primitive_variable_declaration: KEYWORD_VAR IDENTIFIER primitive_typename? OPERATOR_INITIALIZE expression;
-
 // Statement syntax
 
 codeblock: SEPARATOR_BRACE_LEFT separation_chain? (statement_chain separation_chain?)? SEPARATOR_BRACE_RIGHT;
@@ -140,7 +138,7 @@ statement:
     | while_loop_statement
     | c_style_for_loop_statement
     | iteration_for_loop_statement
-    | direct_function_call
+    | function_call
     | expression
     | break_statement
     | continue_statement
@@ -168,11 +166,13 @@ assignment_left_hand_side:
 conditional_statement:
     KEYWORD_IF SEPARATOR_PAREN_LEFT expression SEPARATOR_PAREN_RIGHT
     codeblock
-    (KEYWORD_ELSE (codeblock | conditional_statement))?;
+    conditional_statement_else_tail?;
+
+conditional_statement_else_tail: KEYWORD_ELSE (codeblock | conditional_statement);
 
 while_loop_statement: KEYWORD_FOR expression codeblock;
 
-c_style_for_loop_initialization: assigning_statement | initialized_primitive_variable_declaration;
+c_style_for_loop_initialization: assigning_statement | variable_declaration;
 
 c_style_for_loop_statement:
     KEYWORD_FOR
@@ -220,19 +220,19 @@ expression_tier_1:
     | expression_tier_1 method_call
     | expression_tier_1 struct_member_selection
     | expression_tier_1 array_indexing
-    | direct_function_call;
+    | function_call;
 
-direct_function_call: IDENTIFIER call_syntax;
+function_call: IDENTIFIER call_syntax;
 
 // Struct/interface members, array indexing, and function calling syntax
 
 struct_member_selection: OPERATOR_DOT IDENTIFIER;
-array_indexing: SEPARATOR_BRACKET_LEFT expression SEPARATOR_BRACKET_RIGHT;
-call_syntax: SEPARATOR_PAREN_LEFT function_call_parameter_chain? SEPARATOR_PAREN_RIGHT;
+array_indexing: SEPARATOR_BRACKET_LEFT comma_separated_expression_chain SEPARATOR_BRACKET_RIGHT;
+call_syntax: SEPARATOR_PAREN_LEFT comma_separated_expression_chain? SEPARATOR_PAREN_RIGHT;
 
 method_call: OPERATOR_DOT IDENTIFIER call_syntax;
 
-function_call_parameter_chain: expression (comma_separation function_call_parameter_chain)?;
+comma_separated_expression_chain: expression (comma_separation comma_separated_expression_chain)?;
 
 // Typename syntax
 
