@@ -435,14 +435,11 @@ class ASTGeneration(MiniGoVisitor):
         if ctx.LITERAL_DECIMAL_INT():
             return IntLiteral(int(ctx.LITERAL_DECIMAL_INT().getText()))
         if ctx.LITERAL_BINARY_INT():
-            # The 0b prefix is there, it will handle it.
-            return IntLiteral(int(ctx.LITERAL_BINARY_INT().getText()))
+            return IntLiteral(int(ctx.LITERAL_BINARY_INT().getText(), 2))
         if ctx.LITERAL_OCTAL_INT():
-            # The 0o prefix is there, it will handle it.
-            return IntLiteral(int(ctx.LITERAL_OCTAL_INT().getText()))
+            return IntLiteral(int(ctx.LITERAL_OCTAL_INT().getText(), 8))
         if ctx.LITERAL_HEX_INT():
-            # The 0x prefix is there, it will handle it.
-            return IntLiteral(int(ctx.LITERAL_HEX_INT().getText()))
+            return IntLiteral(int(ctx.LITERAL_HEX_INT().getText(), 16))
 
     # See: literal_float
     def visitLiteral_float(self, ctx: MiniGoParser.Literal_floatContext):
