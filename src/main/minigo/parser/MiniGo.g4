@@ -141,7 +141,7 @@ statement:
     | c_style_for_loop_statement
     | iteration_for_loop_statement
     | direct_function_call
-    | method_call
+    | expression
     | break_statement
     | continue_statement
     | return_statement;
@@ -217,45 +217,20 @@ expression_tier_1:
     | literal_string
     | literal_array
     | SEPARATOR_PAREN_LEFT expression SEPARATOR_PAREN_RIGHT
+    | expression_tier_1 method_call
     | expression_tier_1 struct_member_selection
     | expression_tier_1 array_indexing
-    | direct_function_call
-    | method_call;
+    | direct_function_call;
 
 direct_function_call: IDENTIFIER call_syntax;
-
-method_call:
-    method_call_starting_with_struct_member_selection_chain
-    | method_call_starting_with_array_indexing_chain;
-
-method_call_starting_with_struct_member_selection_chain: (
-    IDENTIFIER
-    | SEPARATOR_PAREN_LEFT expression SEPARATOR_PAREN_RIGHT
-    | literal_struct
-    | direct_function_call
-) (
-    method_call_state_1
-);
-
-method_call_starting_with_array_indexing_chain: (
-    IDENTIFIER
-    | SEPARATOR_PAREN_LEFT expression SEPARATOR_PAREN_RIGHT
-    | literal_array
-    | literal_string
-    | direct_function_call
-) (
-    method_call_state_2
-);
-
-method_call_state_1: struct_member_selection (method_call_state_1 | method_call_state_2 | method_call_state_3);
-method_call_state_2: array_indexing (method_call_state_2 | method_call_state_1);
-method_call_state_3: call_syntax (method_call_state_1 | method_call_state_2)?;
 
 // Struct/interface members, array indexing, and function calling syntax
 
 struct_member_selection: OPERATOR_DOT IDENTIFIER;
 array_indexing: SEPARATOR_BRACKET_LEFT expression SEPARATOR_BRACKET_RIGHT;
 call_syntax: SEPARATOR_PAREN_LEFT function_call_parameter_chain? SEPARATOR_PAREN_RIGHT;
+
+method_call: OPERATOR_DOT IDENTIFIER call_syntax;
 
 function_call_parameter_chain: expression (comma_separation function_call_parameter_chain)?;
 
