@@ -2,8 +2,6 @@ from MiniGoVisitor import MiniGoVisitor
 from MiniGoParser import MiniGoParser
 from AST import *
 
-from src.main.minigo.utils.AST import VoidType
-
 class ASTGeneration(MiniGoVisitor):
     # See: program
     def visitProgram(self, ctx: MiniGoParser.ProgramContext):
