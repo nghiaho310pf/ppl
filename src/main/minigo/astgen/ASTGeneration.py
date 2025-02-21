@@ -7,26 +7,23 @@ from src.main.minigo.utils.AST import VoidType
 class ASTGeneration(MiniGoVisitor):
     # See: program
     def visitProgram(self, ctx: MiniGoParser.ProgramContext):
-        return Program(self.visit(ctx.declaration_chain()))
+        declarations = self.visit(ctx.declaration_chain()) if ctx.declaration_chain() else []
+        return Program(declarations)
 
     # See: declaration_chain
     def visitDeclaration_chain(self, ctx: MiniGoParser.Declaration_chainContext):
-        declarations = []
+        one_declaration = None
         if ctx.struct_declaration():
-            declarations.append(self.visit(ctx.struct_declaration()))
+            one_declaration = [self.visit(ctx.struct_declaration())]
         if ctx.interface_declaration():
-            declarations.append(self.visit(ctx.interface_declaration()))
+            one_declaration = [self.visit(ctx.interface_declaration())]
         if ctx.function_declaration():
-            declarations.append(self.visit(ctx.function_declaration()))
+            one_declaration = [self.visit(ctx.function_declaration())]
         if ctx.constant_declaration():
-            declarations.append(self.visit(ctx.constant_declaration()))
+            one_declaration = [self.visit(ctx.constant_declaration())]
         if ctx.variable_declaration():
-            declarations.append(self.visit(ctx.variable_declaration()))
-
-        if ctx.declaration_chain():
-            return declarations + self.visit(ctx.declaration_chain())
-
-        return declarations
+            one_declaration = [self.visit(ctx.variable_declaration())]
+        return (one_declaration + self.visit(ctx.declaration_chain())) if ctx.declaration_chain() else one_declaration
 
     # See: struct_declaration
     def visitStruct_declaration(self, ctx: MiniGoParser.Struct_declarationContext):
@@ -72,9 +69,12 @@ class ASTGeneration(MiniGoVisitor):
         function_return_type = self.visit(ctx.typename()) if ctx.typename() else VoidType()
         function_body = self.visit(ctx.codeblock())
 
+        # FuncDecl wants INSTANCES OF VarDecl so we just transform it
+        arg_decls = [VarDecl(name, typename, None) for name, typename in function_args]
+
         func = FuncDecl(
             function_name,
-            function_args,
+            arg_decls,
             function_return_type,
             function_body
         )
@@ -83,7 +83,7 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: function_receiver_type
     def visitFunction_receiver_type(self, ctx: MiniGoParser.Function_receiver_typeContext):
-        receiver_name = ctx.IDENTIFIER()
+        receiver_name = ctx.IDENTIFIER().getText()
         receiver_type = self.visit(ctx.typename())
 
         return receiver_name, receiver_type
@@ -348,11 +348,11 @@ class ASTGeneration(MiniGoVisitor):
             return FieldAccess(receiver, field_name)
         if ctx.array_indexing():
             receiver = self.visit(ctx.expression_tier_1())
-            indices = self.visit(ctx.method_call())
+            indices = self.visit(ctx.array_indexing())
             return ArrayCell(receiver, indices)
 
         if ctx.function_call():
-            return self.visit(ctx.expression())
+            return self.visit(ctx.function_call())
 
     # See: function_call
     def visitFunction_call(self, ctx: MiniGoParser.Function_callContext):
@@ -378,7 +378,7 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: call_syntax
     def visitCall_syntax(self, ctx: MiniGoParser.Call_syntaxContext):
-        return self.visit(ctx.comma_separated_expression_chain())
+        return self.visit(ctx.comma_separated_expression_chain()) if ctx.comma_separated_expression_chain() else []
 
     # See: comma_separated_expression_chain
     def visitComma_separated_expression_chain(self, ctx: MiniGoParser.Comma_separated_expression_chainContext):
@@ -390,16 +390,16 @@ class ASTGeneration(MiniGoVisitor):
         if ctx.primitive_typename():
             return self.visit(ctx.primitive_typename())
         if ctx.IDENTIFIER():
-            return StructType(ctx.IDENTIFIER().getText(), [], [])
-
-        # TODO: missing array_typename!
+            return Id(ctx.IDENTIFIER().getText())
+        if ctx.array_typename():
+            return self.visit(ctx.array_typename())
 
     # See: non_array_typename
     def visitNon_array_typename(self, ctx: MiniGoParser.Non_array_typenameContext):
         if ctx.primitive_typename():
             return self.visit(ctx.primitive_typename())
         if ctx.IDENTIFIER():
-            return StructType(ctx.IDENTIFIER().getText(), [], [])
+            return Id(ctx.IDENTIFIER().getText())
 
     # See: primitive_typename
     def visitPrimitive_typename(self, ctx: MiniGoParser.Primitive_typenameContext):
@@ -414,11 +414,15 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: array_typename
     def visitArray_typename(self, ctx: MiniGoParser.Array_typenameContext):
-        return self.visitChildren(ctx)
+        cell_type = self.visit(ctx.non_array_typename())
+        dimensions = self.visit(ctx.array_dimension_chain())
+
+        return ArrayType(dimensions, cell_type)
 
     # See: array_dimension_chain
     def visitArray_dimension_chain(self, ctx: MiniGoParser.Array_dimension_chainContext):
-        return self.visitChildren(ctx)
+        one_dimension = [self.visit(ctx.literal_int()) if ctx.literal_int() else Id(ctx.IDENTIFIER().getText())]
+        return (one_dimension + self.visit(ctx.array_dimension_chain())) if ctx.array_dimension_chain() else one_dimension
 
     # See: literal_nil
     def visitLiteral_nil(self, ctx:MiniGoParser.Literal_nilContext):
@@ -466,15 +470,33 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: literal_array
     def visitLiteral_array(self, ctx: MiniGoParser.Literal_arrayContext):
-        return self.visitChildren(ctx)
+        cell_type = self.visit(ctx.non_array_typename())
+        dimensions = self.visit(ctx.array_dimension_chain())
+        vals = self.visit(ctx.array_dimension_chain())
+        return ArrayLiteral(dimensions, cell_type, vals)
 
     # See: array_literal_value_chain
     def visitArray_literal_value_chain(self, ctx: MiniGoParser.Array_literal_value_chainContext):
-        return self.visitChildren(ctx)
+        one_value = [self.visit(ctx.array_literal_value())]
+        return (one_value + self.visit(ctx.array_literal_value_chain())) if ctx.array_literal_value_chain() else one_value
 
     # See: array_literal_value
     def visitArray_literal_value(self, ctx: MiniGoParser.Array_literal_valueContext):
-        return self.visitChildren(ctx)
+        if ctx.IDENTIFIER():
+            return Id(ctx.IDENTIFIER().getText())
+        if ctx.literal_nil():
+            return self.visit(ctx.literal_nil())
+        if ctx.literal_bool():
+            return self.visit(ctx.literal_bool())
+        if ctx.literal_int():
+            return self.visit(ctx.literal_int())
+        if ctx.literal_float():
+            return self.visit(ctx.literal_float())
+        if ctx.literal_string():
+            return self.visit(ctx.literal_string())
+        if ctx.literal_struct():
+            return self.visit(ctx.literal_struct())
+        return self.visit(ctx.array_literal_value_chain())
 
     # # See: separation_chain
     # def visitSeparation_chain(self, ctx: MiniGoParser.Separation_chainContext):
