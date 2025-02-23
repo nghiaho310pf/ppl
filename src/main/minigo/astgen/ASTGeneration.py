@@ -228,8 +228,8 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: iteration_for_loop_statement
     def visitIteration_for_loop_statement(self, ctx: MiniGoParser.Iteration_for_loop_statementContext):
-        index_var_identifier = ctx.IDENTIFIER(0)
-        value_var_identifier = ctx.IDENTIFIER(1)
+        index_var_identifier = Id(ctx.IDENTIFIER(0).getText())
+        value_var_identifier = Id(ctx.IDENTIFIER(1).getText())
         target = self.visit(ctx.expression())
         block = self.visit(ctx.codeblock())
 

@@ -707,7 +707,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 707))
 
     def test_loop_8(self):
@@ -720,7 +720,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([For(VarDecl(x,IntLiteral(0)),BinaryOp(Id(x),<,IntLiteral(10)),Assign(Id(x),BinaryOp(Id(x),+,IntLiteral(1))),Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([For(VarDecl(x,IntLiteral(0)),BinaryOp(Id(x),<,IntLiteral(10)),Assign(Id(x),BinaryOp(Id(x),+,IntLiteral(1))),Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 708))
 
     def test_loop_9(self):
@@ -733,7 +733,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([ForEach(z,q,ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(3)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))])]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([ForEach(Id(z),Id(q),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(3)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))])]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 709))
 
     def test_loop_10(self):
@@ -751,7 +751,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([ForEach(z,q,ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(3)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))]),VarDecl(a,Id(i)),For(BinaryOp(Id(a),<,IntLiteral(10)),Block([Assign(Id(a),BinaryOp(Id(a),-,Id(z))),FuncCall(print,[Id(a)])]))]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([ForEach(Id(z),Id(q),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(3)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))]),VarDecl(a,Id(i)),For(BinaryOp(Id(a),<,IntLiteral(10)),Block([Assign(Id(a),BinaryOp(Id(a),-,Id(z))),FuncCall(print,[Id(a)])]))]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 710))
 
     # Conditionals, 801..
@@ -1009,7 +1009,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([Break(),Continue(),Return(IntLiteral(1))]))]))])"
+        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([Break(),Continue(),Return(IntLiteral(1))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 907))
 
     def test_bcr_8(self):
@@ -1023,7 +1023,7 @@ class ASTGenSuite(unittest.TestCase):
                 return -1
             }
         """
-        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),==,IntLiteral(2)),Block([Return(Id(i))]))])),Return(UnaryOp(-,IntLiteral(1)))]))])"
+        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),==,IntLiteral(2)),Block([Return(Id(i))]))])),Return(UnaryOp(-,IntLiteral(1)))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 908))
 
     def test_bcr_9(self):
@@ -1037,7 +1037,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)])]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)])]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 909))
 
     def test_bcr_10(self):
@@ -1054,7 +1054,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(i,v,ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)]),If(BinaryOp(Id(v),>,IntLiteral(4)),Block([Return(IntLiteral(7))]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)]),If(BinaryOp(Id(v),>,IntLiteral(4)),Block([Return(IntLiteral(7))]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 910))
 
     # Usual programs. 1001..
