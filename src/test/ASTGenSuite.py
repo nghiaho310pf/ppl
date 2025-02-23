@@ -445,7 +445,7 @@ class ASTGenSuite(unittest.TestCase):
         input = """
             var z boolean = a[1].f2[3][4][5].f3()[6] - 7 < b[9][10].f11().f12[13][14][15].f16()[17] - 18
         """
-        expect = "Program([VarDecl(z,BoolType,BinaryOp(BinaryOp(ArrayCell(MethodCall(ArrayCell(ArrayCell(ArrayCell(FieldAccess(ArrayCell(Id(a),[IntLiteral(1)]),f2),[IntLiteral(3)]),[IntLiteral(4)]),[IntLiteral(5)]),f3,[]),[IntLiteral(6)]),-,IntLiteral(7)),<,BinaryOp(ArrayCell(MethodCall(ArrayCell(ArrayCell(ArrayCell(FieldAccess(MethodCall(ArrayCell(ArrayCell(Id(b),[IntLiteral(9)]),[IntLiteral(10)]),f11,[]),f12),[IntLiteral(13)]),[IntLiteral(14)]),[IntLiteral(15)]),f16,[]),[IntLiteral(17)]),-,IntLiteral(18))))])"
+        expect = "Program([VarDecl(z,BoolType,BinaryOp(BinaryOp(ArrayCell(MethodCall(ArrayCell(FieldAccess(ArrayCell(Id(a),[IntLiteral(1)]),f2),[IntLiteral(3),IntLiteral(4),IntLiteral(5)]),f3,[]),[IntLiteral(6)]),-,IntLiteral(7)),<,BinaryOp(ArrayCell(MethodCall(ArrayCell(FieldAccess(MethodCall(ArrayCell(Id(b),[IntLiteral(9),IntLiteral(10)]),f11,[]),f12),[IntLiteral(13),IntLiteral(14),IntLiteral(15)]),f16,[]),[IntLiteral(17)]),-,IntLiteral(18))))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 516))
 
     def test_expression_17(self):
@@ -456,7 +456,7 @@ class ASTGenSuite(unittest.TestCase):
                 getThatOtherThing() *
                 variousOtherThings())
         """
-        expect = "Program([VarDecl(z,BinaryOp(BinaryOp(BinaryOp(BinaryOp(BinaryOp(ArrayCell(MethodCall(ArrayCell(ArrayCell(ArrayCell(FieldAccess(ArrayCell(Id(a),[IntLiteral(1)]),f2),[IntLiteral(3)]),[IntLiteral(4)]),[IntLiteral(5)]),f3,[]),[IntLiteral(6)]),-,IntLiteral(7)),+,ArrayCell(MethodCall(ArrayCell(ArrayCell(ArrayCell(FieldAccess(MethodCall(ArrayCell(ArrayCell(Id(b),[IntLiteral(9)]),[IntLiteral(10)]),f11,[]),f12),[IntLiteral(13)]),[IntLiteral(14)]),[IntLiteral(15)]),f16,[]),[IntLiteral(17)])),-,IntLiteral(18)),*,FuncCall(getThatOtherThing,[])),*,FuncCall(variousOtherThings,[])))])"
+        expect = "Program([VarDecl(z,BinaryOp(BinaryOp(BinaryOp(BinaryOp(BinaryOp(ArrayCell(MethodCall(ArrayCell(FieldAccess(ArrayCell(Id(a),[IntLiteral(1)]),f2),[IntLiteral(3),IntLiteral(4),IntLiteral(5)]),f3,[]),[IntLiteral(6)]),-,IntLiteral(7)),+,ArrayCell(MethodCall(ArrayCell(FieldAccess(MethodCall(ArrayCell(Id(b),[IntLiteral(9),IntLiteral(10)]),f11,[]),f12),[IntLiteral(13),IntLiteral(14),IntLiteral(15)]),f16,[]),[IntLiteral(17)])),-,IntLiteral(18)),*,FuncCall(getThatOtherThing,[])),*,FuncCall(variousOtherThings,[])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 517))
 
     def test_expression_19(self):

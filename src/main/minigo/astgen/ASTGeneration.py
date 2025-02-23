@@ -184,9 +184,9 @@ class ASTGeneration(MiniGoVisitor):
             receiver = self.visit(ctx.assignment_left_hand_side())
             selection = self.visit(ctx.struct_member_selection())
             return FieldAccess(receiver, selection)
-        if ctx.array_indexing():
+        if ctx.array_indexing_chain():
             receiver = self.visit(ctx.assignment_left_hand_side())
-            indices = self.visit(ctx.array_indexing())
+            indices = self.visit(ctx.array_indexing_chain())
             return ArrayCell(receiver, indices)
 
     # See: conditional_statement
@@ -344,9 +344,9 @@ class ASTGeneration(MiniGoVisitor):
             receiver = self.visit(ctx.expression_tier_1())
             field_name = self.visit(ctx.struct_member_selection())
             return FieldAccess(receiver, field_name)
-        if ctx.array_indexing():
+        if ctx.array_indexing_chain():
             receiver = self.visit(ctx.expression_tier_1())
-            indices = self.visit(ctx.array_indexing())
+            indices = self.visit(ctx.array_indexing_chain())
             return ArrayCell(receiver, indices)
 
         if ctx.function_call():
@@ -371,8 +371,9 @@ class ASTGeneration(MiniGoVisitor):
         return ctx.IDENTIFIER().getText()
 
     # See: array_indexing
-    def visitArray_indexing(self, ctx: MiniGoParser.Array_indexingContext):
-        return self.visit(ctx.comma_separated_expression_chain())
+    def visitArray_indexing_chain(self, ctx: MiniGoParser.Array_indexing_chainContext):
+        one_index = [self.visit(ctx.expression())]
+        return (one_index + self.visit(ctx.array_indexing_chain())) if ctx.array_indexing_chain() else one_index
 
     # See: call_syntax
     def visitCall_syntax(self, ctx: MiniGoParser.Call_syntaxContext):

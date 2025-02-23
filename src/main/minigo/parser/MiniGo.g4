@@ -159,7 +159,7 @@ assigning_operator:
 assignment_left_hand_side:
     IDENTIFIER
     | assignment_left_hand_side struct_member_selection
-    | assignment_left_hand_side array_indexing;
+    | assignment_left_hand_side array_indexing_chain;
 
 // Conditionals and loops
 
@@ -219,7 +219,7 @@ expression_tier_1:
     | SEPARATOR_PAREN_LEFT expression SEPARATOR_PAREN_RIGHT
     | expression_tier_1 method_call
     | expression_tier_1 struct_member_selection
-    | expression_tier_1 array_indexing
+    | expression_tier_1 array_indexing_chain
     | function_call;
 
 function_call: IDENTIFIER call_syntax;
@@ -227,7 +227,7 @@ function_call: IDENTIFIER call_syntax;
 // Struct/interface members, array indexing, and function calling syntax
 
 struct_member_selection: OPERATOR_DOT IDENTIFIER;
-array_indexing: SEPARATOR_BRACKET_LEFT comma_separated_expression_chain SEPARATOR_BRACKET_RIGHT;
+array_indexing_chain: SEPARATOR_BRACKET_LEFT expression SEPARATOR_BRACKET_RIGHT array_indexing_chain?;
 call_syntax: SEPARATOR_PAREN_LEFT comma_separated_expression_chain? SEPARATOR_PAREN_RIGHT;
 
 method_call: OPERATOR_DOT IDENTIFIER call_syntax;
