@@ -214,14 +214,14 @@ class ASTGenSuite(unittest.TestCase):
         input = """
             func X1(x, y int) {}
         """
-        expect = "Program([FuncDecl(X1,[VarDecl(x,IntType),VarDecl(y,IntType)],VoidType,Block([]))])"
+        expect = "Program([FuncDecl(X1,[ParDecl(x,IntType),ParDecl(y,IntType)],VoidType,Block([]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 308))
 
     def test_func_decl_9(self):
         input = """
             func (canvas Canvas) X1(a, b, c string, d, e, f Size) {}
         """
-        expect = "Program([MethodDecl(canvas,Id(Canvas),FuncDecl(X1,[VarDecl(a,StringType),VarDecl(b,StringType),VarDecl(c,StringType),VarDecl(d,Id(Size)),VarDecl(e,Id(Size)),VarDecl(f,Id(Size))],VoidType,Block([])))])"
+        expect = "Program([MethodDecl(canvas,Id(Canvas),FuncDecl(X1,[ParDecl(a,StringType),ParDecl(b,StringType),ParDecl(c,StringType),ParDecl(d,Id(Size)),ParDecl(e,Id(Size)),ParDecl(f,Id(Size))],VoidType,Block([])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 309))
 
     def test_func_decl_10(self):
@@ -243,7 +243,7 @@ class ASTGenSuite(unittest.TestCase):
                 var q = 2
             }
         """
-        expect = "Program([MethodDecl(db,Id(Database),FuncDecl(UselessMethod,[VarDecl(uselessParam1,Id(UselessType1)),VarDecl(uselessParam2,Id(UselessType1)),VarDecl(uselessParam3,Id(UselessType2)),VarDecl(uselessParam4,Id(UselessType3)),VarDecl(uselessParam5,Id(UselessType4)),VarDecl(_,Id(UselessType5))],VoidType,Block([ConstDecl(x,FieldAccess(Id(uselessParam1),uselessField1)),VarDecl(y,BinaryOp(BinaryOp(Id(x),+,ArrayCell(Id(uselessParam2),[IntLiteral(3)])),+,ArrayCell(Id(uselessParam3),[IntLiteral(4)]))),VarDecl(z,BinaryOp(BinaryOp(Id(x),+,IntLiteral(1)),-,BinaryOp(BinaryOp(BinaryOp(IntLiteral(2),*,IntLiteral(3)),/,ArrayCell(Id(uselessParam4),[IntLiteral(5)])),%,IntLiteral(6789)))),VarDecl(q,IntLiteral(2))])))])"
+        expect = "Program([MethodDecl(db,Id(Database),FuncDecl(UselessMethod,[ParDecl(uselessParam1,Id(UselessType1)),ParDecl(uselessParam2,Id(UselessType1)),ParDecl(uselessParam3,Id(UselessType2)),ParDecl(uselessParam4,Id(UselessType3)),ParDecl(uselessParam5,Id(UselessType4)),ParDecl(_,Id(UselessType5))],VoidType,Block([ConstDecl(x,FieldAccess(Id(uselessParam1),uselessField1)),VarDecl(y,BinaryOp(BinaryOp(Id(x),+,ArrayCell(Id(uselessParam2),[IntLiteral(3)])),+,ArrayCell(Id(uselessParam3),[IntLiteral(4)]))),VarDecl(z,BinaryOp(BinaryOp(Id(x),+,IntLiteral(1)),-,BinaryOp(BinaryOp(BinaryOp(IntLiteral(2),*,IntLiteral(3)),/,ArrayCell(Id(uselessParam4),[IntLiteral(5)])),%,IntLiteral(6789)))),VarDecl(q,IntLiteral(2))])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 310))
 
     # Constant & variable declarations, 401..
@@ -477,7 +477,7 @@ class ASTGenSuite(unittest.TestCase):
         input = """
             var z [3]int = [3]int{1, 2, 3}
         """
-        expect = "Program([VarDecl(z,ArrayType(IntType,[IntLiteral(3)]),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(3)]))])"
+        expect = "Program([VarDecl(z,ArrayType(IntType,[IntLiteral(3)]),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(1),IntLiteral(2),IntLiteral(3)]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 520))
 
     # Code blocks, 601..
@@ -707,7 +707,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 707))
 
     def test_loop_8(self):
@@ -720,7 +720,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([For(VarDecl(x,IntLiteral(0)),BinaryOp(Id(x),<,IntLiteral(10)),Assign(Id(x),BinaryOp(Id(x),+,IntLiteral(1))),Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([For(VarDecl(x,IntLiteral(0)),BinaryOp(Id(x),<,IntLiteral(10)),Assign(Id(x),BinaryOp(Id(x),+,IntLiteral(1))),Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([FuncCall(print,[BinaryOp(Id(i),+,Id(v))])]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 708))
 
     def test_loop_9(self):
@@ -733,7 +733,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([ForEach(Id(z),Id(q),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(3)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))])]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([ForEach(Id(z),Id(q),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(2),IntLiteral(4),IntLiteral(6)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))])]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 709))
 
     def test_loop_10(self):
@@ -751,7 +751,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([ForEach(Id(z),Id(q),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(3)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))]),VarDecl(a,Id(i)),For(BinaryOp(Id(a),<,IntLiteral(10)),Block([Assign(Id(a),BinaryOp(Id(a),-,Id(z))),FuncCall(print,[Id(a)])]))]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([ForEach(Id(z),Id(q),ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(2),IntLiteral(4),IntLiteral(6)]),Block([FuncCall(print,[BinaryOp(BinaryOp(Id(i),*,Id(z)),+,BinaryOp(Id(v),*,Id(q)))]),VarDecl(a,Id(i)),For(BinaryOp(Id(a),<,IntLiteral(10)),Block([Assign(Id(a),BinaryOp(Id(a),-,Id(z))),FuncCall(print,[Id(a)])]))]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 710))
 
     # Conditionals, 801..
@@ -996,7 +996,7 @@ class ASTGenSuite(unittest.TestCase):
                 return y.Area()
             }
         """
-        expect = "Program([FuncDecl(x,[VarDecl(y,Id(Size))],FloatType,Block([If(BinaryOp(MethodCall(Id(y),Area,[]),>,IntLiteral(20)),Block([Return(FloatLiteral(0.0))])),Return(MethodCall(Id(y),Area,[]))]))])"
+        expect = "Program([FuncDecl(x,[ParDecl(y,Id(Size))],FloatType,Block([If(BinaryOp(MethodCall(Id(y),Area,[]),>,IntLiteral(20)),Block([Return(FloatLiteral(0.0))])),Return(MethodCall(Id(y),Area,[]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 906))
 
     def test_bcr_7(self):
@@ -1009,7 +1009,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([Break(),Continue(),Return(IntLiteral(1))]))]))])"
+        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([Break(),Continue(),Return(IntLiteral(1))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 907))
 
     def test_bcr_8(self):
@@ -1023,7 +1023,7 @@ class ASTGenSuite(unittest.TestCase):
                 return -1
             }
         """
-        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),==,IntLiteral(2)),Block([Return(Id(i))]))])),Return(UnaryOp(-,IntLiteral(1)))]))])"
+        expect = "Program([FuncDecl(x,[],IntType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([If(BinaryOp(Id(v),==,IntLiteral(2)),Block([Return(Id(i))]))])),Return(UnaryOp(-,IntLiteral(1)))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 908))
 
     def test_bcr_9(self):
@@ -1037,7 +1037,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)])]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)])]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 909))
 
     def test_bcr_10(self):
@@ -1054,7 +1054,7 @@ class ASTGenSuite(unittest.TestCase):
                 }
             }
         """
-        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)]),If(BinaryOp(Id(v),>,IntLiteral(4)),Block([Return(IntLiteral(7))]))]))]))])"
+        expect = "Program([FuncDecl(x,[],VoidType,Block([ForEach(Id(i),Id(v),ArrayLiteral([IntLiteral(2)],IntType,[IntLiteral(2),IntLiteral(4)]),Block([If(BinaryOp(Id(v),<,IntLiteral(2)),Block([Continue()])),FuncCall(print,[Id(v)]),If(BinaryOp(Id(v),>,IntLiteral(4)),Block([Return(IntLiteral(7))]))]))]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 910))
 
     # Usual programs. 1001..
@@ -1153,7 +1153,7 @@ class ASTGenSuite(unittest.TestCase):
                 // TODO
             }
         """
-        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[VarDecl(stack,Id(ResourceStack))],VoidType,Block([])))])"
+        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[ParDecl(stack,Id(ResourceStack))],VoidType,Block([])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 1005))
 
     def test_usual_program_6(self):
@@ -1181,7 +1181,7 @@ class ASTGenSuite(unittest.TestCase):
                 // TODO
             }
         """
-        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[VarDecl(stack,Id(ResourceStack)),VarDecl(force,BoolType)],VoidType,Block([])))])"
+        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[ParDecl(stack,Id(ResourceStack)),ParDecl(force,BoolType)],VoidType,Block([])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 1006))
 
     def test_usual_program_7(self):
@@ -1213,7 +1213,7 @@ class ASTGenSuite(unittest.TestCase):
                 // TODO
             }
         """
-        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[VarDecl(stack,Id(ResourceStack)),VarDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([])))])"
+        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[ParDecl(stack,Id(ResourceStack)),ParDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 1007))
 
     def test_usual_program_8(self):
@@ -1249,7 +1249,7 @@ class ASTGenSuite(unittest.TestCase):
                 println("update")
             }
         """
-        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[VarDecl(stack,Id(ResourceStack)),VarDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])])))])"
+        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[ParDecl(stack,Id(ResourceStack)),ParDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 1008))
 
     def test_usual_program_9(self):
@@ -1290,7 +1290,7 @@ class ASTGenSuite(unittest.TestCase):
                 println(event.toString())
             }
         """
-        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[VarDecl(stack,Id(ResourceStack)),VarDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnInput,[VarDecl(event,Id(InputEvent))],VoidType,Block([FuncCall(println,[StringLiteral(\"Got an event:\")]),FuncCall(println,[MethodCall(Id(event),toString,[])])])))])"
+        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[ParDecl(stack,Id(ResourceStack)),ParDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnInput,[ParDecl(event,Id(InputEvent))],VoidType,Block([FuncCall(println,[StringLiteral(\"Got an event:\")]),FuncCall(println,[MethodCall(Id(event),toString,[])])])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 1009))
 
     def test_usual_program_10(self):
@@ -1334,7 +1334,7 @@ class ASTGenSuite(unittest.TestCase):
                         canvas.drawRect(currentSize.toRect(), makeBluePaint())
                     }
                 """
-        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[VarDecl(stack,Id(ResourceStack)),VarDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnInput,[VarDecl(event,Id(InputEvent))],VoidType,Block([FuncCall(println,[MethodCall(Id(event),toString,[])])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnDraw,[VarDecl(canvas,Id(Canvas))],VoidType,Block([MethodCall(Id(canvas),drawRect,[MethodCall(Id(currentSize),toRect,[]),FuncCall(makeBluePaint,[])])])))])"
+        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[ParDecl(stack,Id(ResourceStack)),ParDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnInput,[ParDecl(event,Id(InputEvent))],VoidType,Block([FuncCall(println,[MethodCall(Id(event),toString,[])])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnDraw,[ParDecl(canvas,Id(Canvas))],VoidType,Block([MethodCall(Id(canvas),drawRect,[MethodCall(Id(currentSize),toRect,[]),FuncCall(makeBluePaint,[])])])))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 1010))
 
     def test_usual_program_11(self):
@@ -1383,5 +1383,5 @@ class ASTGenSuite(unittest.TestCase):
                         framework.setTopLevelWidget(MyWidget{})
                     }
                 """
-        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[VarDecl(stack,Id(ResourceStack)),VarDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnInput,[VarDecl(event,Id(InputEvent))],VoidType,Block([FuncCall(println,[MethodCall(Id(event),toString,[])])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnDraw,[VarDecl(canvas,Id(Canvas))],VoidType,Block([MethodCall(Id(canvas),drawRect,[MethodCall(Id(currentSize),toRect,[]),FuncCall(makeBluePaint,[])])]))),FuncDecl(main,[],VoidType,Block([VarDecl(framework,Id(Framework),FuncCall(makeFramework,[])),MethodCall(Id(framework),setTopLevelWidget,[StructLiteral(MyWidget,[])])]))])"
+        expect = "Program([InterfaceType(Widget,[Prototype(OnLoad,[Id(ResourceStack),BoolType],VoidType),Prototype(OnUnload,[],VoidType),Prototype(OnUpdate,[],VoidType),Prototype(OnInput,[Id(InputEvent)],VoidType),Prototype(OnDraw,[Id(Canvas)],VoidType)]),StructType(MyWidget,[(fixedSizeHint,Id(SizeHint)),(currentSize,Id(Size))],[]),MethodDecl(mw,Id(MyWidget),FuncDecl(OnLoad,[ParDecl(stack,Id(ResourceStack)),ParDecl(force,BoolType)],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUnload,[],VoidType,Block([]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnUpdate,[],VoidType,Block([FuncCall(println,[StringLiteral(\"update\")])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnInput,[ParDecl(event,Id(InputEvent))],VoidType,Block([FuncCall(println,[MethodCall(Id(event),toString,[])])]))),MethodDecl(mw,Id(MyWidget),FuncDecl(OnDraw,[ParDecl(canvas,Id(Canvas))],VoidType,Block([MethodCall(Id(canvas),drawRect,[MethodCall(Id(currentSize),toRect,[]),FuncCall(makeBluePaint,[])])]))),FuncDecl(main,[],VoidType,Block([VarDecl(framework,Id(Framework),FuncCall(makeFramework,[])),MethodCall(Id(framework),setTopLevelWidget,[StructLiteral(MyWidget,[])])]))])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 1011))

@@ -67,8 +67,8 @@ class ASTGeneration(MiniGoVisitor):
         function_return_type = self.visit(ctx.typename()) if ctx.typename() else VoidType()
         function_body = self.visit(ctx.codeblock())
 
-        # FuncDecl wants INSTANCES OF VarDecl so we just transform it
-        arg_decls = [VarDecl(name, typename, None) for name, typename in function_args]
+        # FuncDecl wants INSTANCES OF ParamDecl so we just transform it
+        arg_decls = [ParamDecl(name, typename) for name, typename in function_args]
 
         func = FuncDecl(
             function_name,
@@ -470,7 +470,7 @@ class ASTGeneration(MiniGoVisitor):
     def visitLiteral_array(self, ctx: MiniGoParser.Literal_arrayContext):
         cell_type = self.visit(ctx.non_array_typename())
         dimensions = self.visit(ctx.array_dimension_chain())
-        vals = self.visit(ctx.array_dimension_chain())
+        vals = self.visit(ctx.array_literal_value_chain())
         return ArrayLiteral(dimensions, cell_type, vals)
 
     # See: array_literal_value_chain
