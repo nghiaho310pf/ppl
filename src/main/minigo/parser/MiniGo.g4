@@ -38,6 +38,7 @@ def nextToken(self):
             self.LITERAL_HEX_INT,
             self.LITERAL_FLOAT,
             self.LITERAL_STRING,
+            self.KEYWORD_NIL,
             self.KEYWORD_INT,
             self.KEYWORD_FLOAT,
             self.KEYWORD_BOOLEAN,

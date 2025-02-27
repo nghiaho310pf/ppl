@@ -79,11 +79,13 @@ class ASTGenSuite(unittest.TestCase):
 
     def test_interface_decl_1(self):
         input = """
+            const q ThingInterface = nil
+        
             type Synchromach interface {
                 Add() int
             }
         """
-        expect = "Program([InterfaceType(Synchromach,[Prototype(Add,[],IntType)])])"
+        expect = "Program([ConstDecl(q,Id(ThingInterface),Nil),InterfaceType(Synchromach,[Prototype(Add,[],IntType)])])"
         self.assertTrue(TestAST.checkASTGen(input, expect, 201))
 
     def test_interface_decl_2(self):
