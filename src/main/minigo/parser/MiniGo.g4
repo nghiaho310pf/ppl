@@ -122,7 +122,7 @@ comma_separated_identifier_chain: IDENTIFIER (comma_separation comma_separated_i
 
 // Constant and variable declaration syntax
 
-constant_declaration: KEYWORD_CONST IDENTIFIER (typename? OPERATOR_INITIALIZE expression | typename);
+constant_declaration: KEYWORD_CONST IDENTIFIER typename? OPERATOR_INITIALIZE expression;
 variable_declaration: KEYWORD_VAR IDENTIFIER (typename? OPERATOR_INITIALIZE expression | typename);
 
 // Statement syntax

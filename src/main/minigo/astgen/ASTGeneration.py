@@ -103,7 +103,7 @@ class ASTGeneration(MiniGoVisitor):
     def visitConstant_declaration(self, ctx: MiniGoParser.Constant_declarationContext):
         constant_name = ctx.IDENTIFIER().getText()
         constant_type = self.visit(ctx.typename()) if ctx.typename() else None
-        constant_initialization = self.visit(ctx.expression()) if ctx.expression() else None
+        constant_initialization = self.visit(ctx.expression())
 
         return ConstDecl(constant_name, constant_type, constant_initialization)
 
@@ -202,7 +202,7 @@ class ASTGeneration(MiniGoVisitor):
         if ctx.codeblock():
             return self.visit(ctx.codeblock())
         if ctx.conditional_statement():
-            return Block([self.visit(ctx.conditional_statement())])
+            return self.visit(ctx.conditional_statement())
 
     # See: while_loop_statement
     def visitWhile_loop_statement(self, ctx: MiniGoParser.While_loop_statementContext):
