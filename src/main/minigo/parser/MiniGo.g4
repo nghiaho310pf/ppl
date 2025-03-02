@@ -87,9 +87,8 @@ declaration_chain: (
 
 // Struct syntax
 
-struct_declaration: KEYWORD_TYPE IDENTIFIER KEYWORD_STRUCT
-    SEPARATOR_BRACE_LEFT
-    struct_field_chain? separation_chain
+struct_declaration: KEYWORD_TYPE IDENTIFIER KEYWORD_STRUCT SEPARATOR_BRACE_LEFT
+    separation_chain? struct_field_chain? separation_chain?
     SEPARATOR_BRACE_RIGHT;
 
 struct_field_chain: IDENTIFIER typename (separation_chain struct_field_chain)?;
@@ -97,7 +96,7 @@ struct_field_chain: IDENTIFIER typename (separation_chain struct_field_chain)?;
 // Interface syntax
 
 interface_declaration: KEYWORD_TYPE IDENTIFIER KEYWORD_INTERFACE SEPARATOR_BRACE_LEFT
-    interface_method_chain? separation_chain
+    separation_chain? interface_method_chain? separation_chain?
     SEPARATOR_BRACE_RIGHT;
 
 interface_method_chain: (
