@@ -29,7 +29,7 @@ class TestLexer:
         dest = StringIO()
         lexer = MiniGoLexer(input_stream)
         try:
-            TestLexer.printLexeme(dest,lexer,",")
+            TestLexer.printLexeme(dest,lexer)
         except (ErrorToken,UncloseString,IllegalEscape) as err:
             dest.write(err.message)
         except Exception as err:

@@ -267,7 +267,7 @@ class ParserSuite(unittest.TestCase):
         input = """
             const x float
         """
-        expect = "successful"
+        expect = "Error on line 2 col 26: ;"
         self.assertTrue(TestParser.checkParser(input,expect,403))
 
     def test_const_decl_4(self):
@@ -1097,7 +1097,7 @@ class ParserSuite(unittest.TestCase):
                 2 := 4
             }
         """
-        expect = "Error on line 3 col 17: 2"
+        expect = "Error on line 3 col 19: :="
         self.assertTrue(TestParser.checkParser(input,expect,1005))
 
     def test_missing_newline(self):
