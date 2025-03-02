@@ -53,22 +53,15 @@ def main(argv):
             sys.path.append('./main/minigo/parser/')
         if os.path.isdir(TARGET) and not TARGET in sys.path:
             sys.path.append(TARGET)
-        if len(argv) < 2:
-            printUsage()
-        elif argv[1] == 'LexerSuite':
-            from LexerSuite import LexerSuite
-            suite = unittest.TestLoader().loadTestsFromTestCase(LexerSuite)
-            test(suite)
-        elif argv[1] == 'ParserSuite':
-            from ParserSuite import ParserSuite
-            suite = unittest.TestLoader().loadTestsFromTestCase(ParserSuite)
-            test(suite)
-        elif argv[1] == 'ASTGenSuite':
-            from ASTGenSuite import ASTGenSuite
-            suite = unittest.TestLoader().loadTestsFromTestCase(ASTGenSuite)
-            test(suite)
-        else:
-            printUsage()
+        from LexerSuite import LexerSuite
+        from ParserSuite import ParserSuite
+        from ASTGenSuite import ASTGenSuite
+
+        test(unittest.TestSuite([
+            unittest.TestLoader().loadTestsFromTestCase(LexerSuite),
+            unittest.TestLoader().loadTestsFromTestCase(ParserSuite),
+            unittest.TestLoader().loadTestsFromTestCase(ASTGenSuite)
+        ]))
     else:
         printUsage()
 
