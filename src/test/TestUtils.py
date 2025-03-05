@@ -104,7 +104,13 @@ class TestAST:
         lexer = MiniGoLexer(input_stream)
         tokens = CommonTokenStream(lexer)
         parser = MiniGoParser(tokens)
-        tree = parser.program()
+        tree = None
+        try:
+            tree = parser.program()
+        except SyntaxException as f:
+            dest.write(f.message)
+        except Exception as e:
+            dest.write(str(e))
         asttree = ASTGeneration().visit(tree)
 
         dest.write(str(asttree))
