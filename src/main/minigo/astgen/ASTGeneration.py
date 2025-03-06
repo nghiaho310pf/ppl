@@ -140,8 +140,6 @@ class ASTGeneration(MiniGoVisitor):
             return self.visit(ctx.c_style_for_loop_statement())
         if ctx.iteration_for_loop_statement():
             return self.visit(ctx.iteration_for_loop_statement())
-        if ctx.function_call():
-            return self.visit(ctx.function_call())
         if ctx.expression():
             return self.visit(ctx.expression())
         if ctx.break_statement():

@@ -138,7 +138,6 @@ statement:
     | while_loop_statement
     | c_style_for_loop_statement
     | iteration_for_loop_statement
-    | function_call
     | expression
     | break_statement
     | continue_statement
