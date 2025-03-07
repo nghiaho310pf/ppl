@@ -31,24 +31,31 @@ def nextToken(self):
 
     if token.type == self.NEWLINES:
         inject_targets = [
+            self.KEYWORD_RETURN,
+            self.KEYWORD_CONTINUE,
+            self.KEYWORD_BREAK,
+            self.KEYWORD_NIL,
+            self.KEYWORD_TRUE,
+            self.KEYWORD_FALSE,
+
+            self.KEYWORD_STRING,
+            self.KEYWORD_INT,
+            self.KEYWORD_FLOAT,
+            self.KEYWORD_BOOLEAN,
+
+            self.SEPARATOR_PAREN_RIGHT,
+            self.SEPARATOR_BRACE_RIGHT,
+            self.SEPARATOR_BRACKET_RIGHT,
+
             self.IDENTIFIER,
+
             self.LITERAL_DECIMAL_INT,
             self.LITERAL_BINARY_INT,
             self.LITERAL_OCTAL_INT,
             self.LITERAL_HEX_INT,
             self.LITERAL_FLOAT,
-            self.LITERAL_STRING,
-            self.KEYWORD_NIL,
-            self.KEYWORD_INT,
-            self.KEYWORD_FLOAT,
-            self.KEYWORD_BOOLEAN,
-            self.KEYWORD_STRING,
-            self.KEYWORD_RETURN,
-            self.KEYWORD_BREAK,
-            self.KEYWORD_CONTINUE,
-            self.SEPARATOR_PAREN_RIGHT,
-            self.SEPARATOR_BRACE_RIGHT,
-            self.SEPARATOR_BRACKET_RIGHT
+
+            self.LITERAL_STRING
         ]
 
         if self.previous_token_type in inject_targets:
