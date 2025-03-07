@@ -37,9 +37,8 @@ class TestLexer:
         line = dest.getvalue()
 
         if line != expect:
-            print(f"Test {num}:")
-            print(f"    expected {expect}")
-            print(f"       found {line}")
+            raise Exception(f"Expected {expect}\n"
+                            f"              found {line}")
 
         # return line == expect
         return True
@@ -103,16 +102,15 @@ class TestAST:
 
         lexer = MiniGoLexer(input_stream)
         tokens = CommonTokenStream(lexer)
-        parser = MiniGoParser(tokens)
-        tree = None
-        try:
-            tree = parser.program()
-        except SyntaxException as f:
-            dest.write(f.message)
-        except Exception as e:
-            dest.write(str(e))
-        asttree = ASTGeneration().visit(tree)
 
+        listener = NewErrorListener()
+
+        parser = MiniGoParser(tokens)
+        parser.removeErrorListeners()
+        parser.addErrorListener(listener)
+
+        tree = parser.program()
+        asttree = ASTGeneration().visit(tree)
         dest.write(str(asttree))
 
         line = dest.getvalue()
