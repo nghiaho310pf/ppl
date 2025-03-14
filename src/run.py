@@ -56,11 +56,13 @@ def main(argv):
         from LexerSuite import LexerSuite
         from ParserSuite import ParserSuite
         from ASTGenSuite import ASTGenSuite
+        from CheckSuite import CheckSuite
 
         test(unittest.TestSuite([
-            unittest.TestLoader().loadTestsFromTestCase(LexerSuite),
-            unittest.TestLoader().loadTestsFromTestCase(ParserSuite),
-            unittest.TestLoader().loadTestsFromTestCase(ASTGenSuite)
+            # unittest.TestLoader().loadTestsFromTestCase(LexerSuite),
+            # unittest.TestLoader().loadTestsFromTestCase(ParserSuite),
+            # unittest.TestLoader().loadTestsFromTestCase(ASTGenSuite),
+            unittest.TestLoader().loadTestsFromTestCase(CheckSuite)
         ]))
     else:
         printUsage()

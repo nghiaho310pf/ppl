@@ -52,7 +52,7 @@ class Visitor(ABC):
     def visitBlock(self, param):
         pass
     @abstractmethod
-    def visitAsign(self, param):
+    def visitAssign(self, param):
         pass
     @abstractmethod
     def visitIf(self, param):
@@ -161,7 +161,7 @@ class BaseVisitor(Visitor):
     def visitStructType(self, param):
         return None
 
-    def visitInterface(self, param):
+    def visitInterfaceType(self, param):
         return None
     
     def visitBlock(self, param):
@@ -197,7 +197,7 @@ class BaseVisitor(Visitor):
     def visitUnaryOp(self, param):
         return None
     
-    def visitFuncCallExpr(self, param):
+    def visitFuncCall(self, param):
         return None
 
     def visitMethCall(self, param):

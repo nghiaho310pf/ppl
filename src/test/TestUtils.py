@@ -1,26 +1,14 @@
-import sys,os
 from io import StringIO
 
 from antlr4 import *
 from antlr4.error.ErrorListener import ConsoleErrorListener,ErrorListener
-#if not './main/minigo/parser/' in sys.path:
-#    sys.path.append('./main/minigo/parser/')
-#if os.path.isdir('../target/main/minigo/parser') and not '../target/main/minigo/parser/' in sys.path:
-#    sys.path.append('../target/main/minigo/parser/')
 from MiniGoLexer import MiniGoLexer
 from MiniGoParser import MiniGoParser
+
+from StaticError import StaticError
+from StaticCheck import StaticChecker
 from lexererr import *
 from ASTGeneration import ASTGeneration
-
-# class TestUtil:
-#     @staticmethod
-#     def makeSource(inputStr,num):
-#         filename = "./test/testcases/" + str(num) + ".txt"
-#         file = open(filename,"w")
-#         file.write(inputStr)
-#         file.close()
-#         return FileStream(filename)
-
 
 class TestLexer:
     @staticmethod
@@ -121,3 +109,61 @@ class TestAST:
 
         # return line == expect
         return True
+
+
+class TestChecker:
+    @staticmethod
+    def test(input, expect, num):
+        return TestChecker.checkStatic(input, expect, num)
+
+    @staticmethod
+    def checkStatic(input, expect, num):
+        dest = StringIO()
+
+        if type(input) is str:
+            input_stream = InputStream(input)
+            lexer = MiniGoLexer(input_stream)
+            tokens = CommonTokenStream(lexer)
+            parser = MiniGoParser(tokens)
+            tree = parser.program()
+            asttree = ASTGeneration().visit(tree)
+        else:
+            asttree = input
+
+        checker = StaticChecker(asttree)
+        try:
+            res = checker.check()
+        except StaticError as e:
+            dest.write(str(e) + '\n')
+
+        line = dest.getvalue()
+
+        if line != expect:
+            raise Exception(f"Expected {expect}\n"
+                            f"              found {line}")
+
+        # return line == expect
+        return True
+
+    # @staticmethod
+    # def test1(inputdir, outputdir, num):
+    #
+    #     dest = open(outputdir + "/" + str(num) + ".txt", "w")
+    #
+    #     try:
+    #         lexer = MiniGoLexer(FileStream(inputdir + "/" + str(num) + ".txt"))
+    #         tokens = CommonTokenStream(lexer)
+    #         parser = MiniGoParser(tokens)
+    #         tree = parser.program()
+    #         asttree = ASTGeneration().visit(tree)
+    #
+    #         checker = StaticChecker(asttree)
+    #         res = checker.check()
+    #
+    #     except StaticError as e:
+    #         dest.write(str(e) + '\n')
+    #     except:
+    #         trace = traceback.format_exc()
+    #         print("Test " + str(num) + " catches unexpected error:" + trace + "\n")
+    #     finally:
+    #         dest.close()
