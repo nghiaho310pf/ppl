@@ -1,5 +1,5 @@
 """
- * @author nhphung
+ * @author nghia.ho310pf
 """
 from AST import * 
 from Visitor import *
@@ -8,7 +8,7 @@ from StaticError import *
 from functools import reduce
 
 class MType:
-    def __init__(self,partype,rettype):
+    def __init__(self, partype, rettype):
         self.partype = partype
         self.rettype = rettype
 
@@ -25,12 +25,9 @@ class Symbol:
         return "Symbol(" + str(self.name) + "," + str(self.mtype) + ("" if self.value is None else "," + str(self.value)) + ")"
 
 class StaticChecker(BaseVisitor,Utils):
-        
-    
     def __init__(self,ast):
         self.ast = ast
         self.global_envi = [Symbol("getInt",MType([],IntType())),Symbol("putIntLn",MType([IntType()],VoidType()))]
- 
     
     def check(self):
         return self.visit(self.ast,self.global_envi)
