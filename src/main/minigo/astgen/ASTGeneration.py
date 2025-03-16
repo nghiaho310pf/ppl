@@ -61,7 +61,6 @@ class ASTGeneration(MiniGoVisitor):
     # See: function_declaration
     def visitFunction_declaration(self, ctx: MiniGoParser.Function_declarationContext):
         receiver_name, receiver_type = self.visit(ctx.function_receiver_type()) if ctx.function_receiver_type() else (None, None)
-
         function_name = ctx.IDENTIFIER().getText()
         function_args = self.visit(ctx.function_parameter_chain()) if ctx.function_parameter_chain() else []
         function_return_type = self.visit(ctx.typename()) if ctx.typename() else VoidType()
@@ -81,8 +80,8 @@ class ASTGeneration(MiniGoVisitor):
 
     # See: function_receiver_type
     def visitFunction_receiver_type(self, ctx: MiniGoParser.Function_receiver_typeContext):
-        receiver_name = ctx.IDENTIFIER().getText()
-        receiver_type = self.visit(ctx.typename())
+        receiver_name = ctx.IDENTIFIER(0).getText()
+        receiver_type = Id(ctx.IDENTIFIER(1).getText())
 
         return receiver_name, receiver_type
 

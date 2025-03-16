@@ -119,7 +119,7 @@ function_declaration: KEYWORD_FUNC function_receiver_type? IDENTIFIER
     SEPARATOR_PAREN_LEFT function_parameter_chain? SEPARATOR_PAREN_RIGHT typename?
     codeblock;
 
-function_receiver_type: SEPARATOR_PAREN_LEFT IDENTIFIER typename SEPARATOR_PAREN_RIGHT;
+function_receiver_type: SEPARATOR_PAREN_LEFT IDENTIFIER IDENTIFIER SEPARATOR_PAREN_RIGHT;
 
 // Things that look and quack like functions (and various parts of it)
 
