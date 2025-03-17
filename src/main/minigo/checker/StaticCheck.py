@@ -4,6 +4,7 @@
 """
 
 import AST
+from AST import VoidType
 from Visitor import *
 # from Utils import Utils
 import StaticError
@@ -100,8 +101,7 @@ class StaticChecker(BaseVisitor):
     def compare_types(a: AST.Type, b: AST.Type):
         if isinstance(a, AST.Id) and isinstance(b, AST.Id):
             return a.name == b.name
-        if type(a) != type(b):
-            return False
+        return type(a) == type(b)
 
     def check(self):
         # TODO: there are pre-defined global methods; add them here.
@@ -298,10 +298,16 @@ class StaticChecker(BaseVisitor):
             # TODO: what to raise here?
             raise StaticError.Undeclared(StaticError.Function(), "(no function)")
 
-        expr_type = self.visit(ast.expr, given_scope)
-
-        if not self.compare_types(expr_type, current_function.original_ast.retType):
-            raise StaticError.TypeMismatch(ast.expr)
+        if isinstance(current_function.original_ast.retType, VoidType):
+            if ast.expr is not None:
+                raise StaticError.TypeMismatch(ast)
+        else:
+            if ast.expr is None:
+                raise StaticError.TypeMismatch(ast)
+            expr_type = self.visit(ast.expr, given_scope)
+            print(f"dbg: ast.expr = {ast.expr}; expr_type = {expr_type}; current_function.original_ast.retType = {current_function.original_ast.retType}")
+            if not self.compare_types(expr_type, current_function.original_ast.retType):
+                raise StaticError.TypeMismatch(ast)
 
     def visitBinaryOp(self, ast, param):
         return None

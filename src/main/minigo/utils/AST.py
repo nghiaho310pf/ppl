@@ -67,8 +67,8 @@ class ParamDecl(Decl):
 @dataclass    
 class VarDecl(Decl,BlockMember):
     varName : str
-    varType : Type # None if there is no type
-    varInit : Expr # None if there is no initialization
+    varType : Type | None # None if there is no type
+    varInit : Expr | None # None if there is no initialization
 
     def __str__(self):
         return "VarDecl(" + self.varName +  (("," + str(self.varType)) if self.varType else "") + ("" if self.varInit is None else (","+ str(self.varInit))) + ")"
@@ -220,7 +220,7 @@ class Assign(Stmt):
 class If(Stmt):
     expr:Expr
     thenStmt:Stmt
-    elseStmt:Stmt # None if there is no else
+    elseStmt:Stmt | None # None if there is no else
 
     def __str__(self):
         return "If(" + str(self.expr) + "," + str(self.thenStmt) + ("" if (self.elseStmt is None) else "," + str(self.elseStmt)) + ")"
@@ -281,7 +281,7 @@ class Continue(Stmt):
 
 @dataclass
 class Return(Stmt):
-    expr:Expr # None if there is no expr
+    expr:Expr | None # None if there is no expr
 
     def __str__(self):
         return "Return(" + ("" if (self.expr is None) else str(self.expr)) + ")"
