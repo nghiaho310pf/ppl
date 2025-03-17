@@ -8,7 +8,7 @@ from AST import VoidType
 from Visitor import *
 # from Utils import Utils
 import StaticError
-from functools import reduce
+# from functools import reduce
 
 # class MType:
 #     def __init__(self, partype, rettype):
@@ -340,7 +340,7 @@ class StaticChecker(BaseVisitor):
                         # TODO: ???!!!
                         raise StaticError.TypeMismatch(ast)
         else:
-            raise StaticError.Undeclared(StaticError.Field(), ast.field)
+            raise StaticError.Undeclared(StaticError.Method(), ast.metName)
 
     def visitId(self, ast: AST.Id, given_scope: list[ScopeObject]):
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
