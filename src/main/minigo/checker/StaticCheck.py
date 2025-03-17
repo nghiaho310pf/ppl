@@ -28,8 +28,13 @@ from functools import reduce
 
 # Just use classes, man.
 
-class Symbol:
+class ScopeObject:
+    def __init__(self):
+        pass
+
+class Symbol(ScopeObject):
     def __init__(self, name: str):
+        super().__init__()
         self.name = name
 
 class StructSymbol(Symbol):
@@ -53,12 +58,23 @@ class VariableSymbol(Symbol):
         self.original_ast = original_ast
         self.resolved_type = None
 
-    def set_type(self, type: AST.Type):
-        self.resolved_type = type
+    def set_type(self, new_type: AST.Type):
+        self.resolved_type = new_type
 
 class ConstantSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.ConstDecl):
         super().__init__(name)
+        self.original_ast = original_ast
+        self.resolved_type = None
+
+    def set_type(self, new_type: AST.Type):
+        self.resolved_type = new_type
+
+# Some state, who cares.
+
+class CurrentFunction(ScopeObject):
+    def __init__(self, original_ast: AST.FuncDecl):
+        super().__init__()
         self.original_ast = original_ast
 
 # class StaticChecker(BaseVisitor,Utils):
@@ -78,61 +94,68 @@ class StaticChecker(BaseVisitor):
         # TODO: there are pre-defined global methods; add them here.
         return self.visit(self.root_ast, [])
 
-    def visitProgram(self, ast: AST.Program, given_scope: list[Symbol]):
-        scope: list[Symbol] = given_scope.copy()
+    def visitProgram(self, ast: AST.Program, given_scope: list[ScopeObject]):
+        scope: list[ScopeObject] = given_scope.copy()
+
         for thing in ast.decl:
             if isinstance(thing, AST.StructType):
-                for existing_symbol in scope:
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
+                self.visit(thing, scope)
                 scope.append(StructSymbol(thing.name, thing))
             elif isinstance(thing, AST.InterfaceType):
-                for existing_symbol in scope:
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
+                self.visit(thing, scope)
                 scope.append(InterfaceSymbol(thing.name, thing))
             elif isinstance(thing, AST.FuncDecl):
-                for existing_symbol in scope:
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Function(), thing.name)
+                # Recursion may be used so we'll append it to scope first.
                 scope.append(FunctionSymbol(thing.name, thing))
-            elif isinstance(thing, AST.VarDecl):
-                for existing_symbol in scope:
-                    if thing.varName == existing_symbol.name:
-                        raise StaticError.Redeclared(StaticError.Variable(), thing.varName)
-                scope.append(VariableSymbol(thing.varName, thing))
-            elif isinstance(thing, AST.ConstDecl):
-                for existing_symbol in scope:
-                    if thing.conName == existing_symbol.name:
-                        raise StaticError.Redeclared(StaticError.Variable(), thing.conName)
-                scope.append(ConstantSymbol(thing.conName, thing))
-
-        # So far we've pretty much only tried to find global duplicates; methods aren't even checked yet.
-
-        # Find methods.
-        # This must be done here because methods are declared outside their receivers.
-        for thing in ast.decl:
-            if isinstance(thing, AST.MethodDecl):
+                self.visit(thing, scope)
+            elif isinstance(thing, AST.MethodDecl):
                 # Preventative hack-fix for ASTGeneration.py/AST.py flaw.
                 if type(thing.recType) is not AST.Id:
-                    raise StaticError.TypeMismatch(thing)  # TODO: do something about this?
-                receiver_type_id: AST.Id = thing.recType  # downcast so the IDE actually shuts up about it
+                    raise StaticError.TypeMismatch(thing) # TODO: do something about this?
+                receiver_type_id: AST.Id = thing.recType # downcast so the IDE actually shuts up about it
+                struct_found = False
                 for struct in filter(lambda s: isinstance(s, StructSymbol), scope):
                     if struct.name == receiver_type_id.name:
                         for existing_method in struct.original_ast.methods:
                             if existing_method.fun.name == thing.fun.name:
                                 raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
                         struct.original_ast.methods.append(thing)
+                        struct_found = True
                         break
-                # TODO: this is probably correct but I should ask Phung just to be sure.
-                raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
-
-        for thing in ast.decl:
-            self.visit(thing, scope)
+                if not struct_found:
+                    # TODO: this is probably correct but I should ask Phung just to be sure.
+                    raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
+                # Recursion may be used so it's added to the struct first above.
+                self.visit(thing, scope)
+            elif isinstance(thing, AST.VarDecl):
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
+                    if thing.varName == existing_symbol.name:
+                        raise StaticError.Redeclared(StaticError.Variable(), thing.varName)
+                resolved_type = self.visit(thing, scope)
+                sym = VariableSymbol(thing.varName, thing)
+                sym.set_type(resolved_type)
+                scope.append(sym)
+            elif isinstance(thing, AST.ConstDecl):
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
+                    if thing.conName == existing_symbol.name:
+                        raise StaticError.Redeclared(StaticError.Variable(), thing.conName)
+                resolved_type = self.visit(thing, scope)
+                sym = ConstantSymbol(thing.conName, thing)
+                sym.set_type(resolved_type)
+                scope.append(sym)
 
         # TODO: do we return anything? Ask Phung.
 
-    def visitVarDecl(self, ast: AST.VarDecl, given_scope: list[Symbol]):
+    def visitVarDecl(self, ast: AST.VarDecl, given_scope: list[ScopeObject]):
         # We don't check name dupes; that's done by the outer layer.
         # Instead, we only visit the inner expression and check for type mismatches.
 
@@ -146,7 +169,7 @@ class StaticChecker(BaseVisitor):
 
         return implicit_type if implicit_type is not None else explicit_type
 
-    def visitConstDecl(self, ast: AST.ConstDecl, given_scope: list[Symbol]):
+    def visitConstDecl(self, ast: AST.ConstDecl, given_scope: list[ScopeObject]):
         # We don't check name dupes here either; that's done by the outer layer.
         explicit_type = self.visit(ast.conType, given_scope) if ast.conType is not None else None
         implicit_type = self.visit(ast.iniExpr, given_scope) if ast.iniExpr is not None else None
@@ -158,8 +181,9 @@ class StaticChecker(BaseVisitor):
 
         return implicit_type if implicit_type is not None else explicit_type
 
-    def visitFuncDecl(self, ast, param):
-        return None
+    def visitFuncDecl(self, ast: AST.FuncDecl, scope: list[ScopeObject]):
+        my_scope = scope + [CurrentFunction(ast)]
+
 
     def visitMethodDecl(self, ast, param):
         return None
@@ -251,7 +275,7 @@ class StaticChecker(BaseVisitor):
     def visitStringLiteral(self, ast, param):
         return AST.StringType()
 
-    def visitArrayLiteral(self, ast: AST.ArrayLiteral, scope: list[Symbol]):
+    def visitArrayLiteral(self, ast: AST.ArrayLiteral, scope: list[ScopeObject]):
         return
 
     def visitStructLiteral(self, ast, param):
