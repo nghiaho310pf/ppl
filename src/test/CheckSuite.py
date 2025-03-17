@@ -35,9 +35,8 @@ class CheckSuite(unittest.TestCase):
         
             func X() Point {
                 var a = Point{};
-                var x float = a.Length();
+                var x int = a.Length();
             }
         """
-        expect = ""
+        expect = "Type Mismatch: VarDecl(x,IntType,MethodCall(Id(a),Length,[]))\n"
         self.assertTrue(TestChecker.test(input,expect,402))
-  
