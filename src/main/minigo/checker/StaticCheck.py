@@ -305,7 +305,6 @@ class StaticChecker(BaseVisitor):
             if ast.expr is None:
                 raise StaticError.TypeMismatch(ast)
             expr_type = self.visit(ast.expr, given_scope)
-            print(f"dbg: ast.expr = {ast.expr}; expr_type = {expr_type}; current_function.original_ast.retType = {current_function.original_ast.retType}")
             if not self.compare_types(expr_type, current_function.original_ast.retType):
                 raise StaticError.TypeMismatch(ast)
 
