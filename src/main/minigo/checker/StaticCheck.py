@@ -317,8 +317,30 @@ class StaticChecker(BaseVisitor):
     def visitFuncCall(self, ast, param):
         return None
 
-    def visitMethCall(self, ast, param):
-        return None
+    def visitMethCall(self, ast: AST.MethCall, given_scope: list[ScopeObject]):
+        receiver_type = self.visit(ast.receiver, given_scope + [IsExpressionVisit()])
+        if isinstance(receiver_type, AST.Id):
+            # Resolve the type (again)
+            for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol),
+                              reversed(given_scope)):
+                if sym.name == receiver_type.name:
+                    if isinstance(sym, StructSymbol):
+                        for method in sym.original_ast.methods:
+                            if method.fun.name == ast.metName:
+                                # TODO: count arguments and check their receivers.
+                                return method.fun.retType
+                        raise StaticError.Undeclared(StaticError.Method(), ast.metName)
+                    elif isinstance(sym, InterfaceSymbol):
+                        for prototype in sym.original_ast.methods:
+                            if prototype.name == ast.metName:
+                                # TODO: count arguments and check their receivers.
+                                return prototype.retType
+                        raise StaticError.Undeclared(StaticError.Method(), ast.metName)
+                    else:
+                        # TODO: ???!!!
+                        raise StaticError.TypeMismatch(ast)
+        else:
+            raise StaticError.Undeclared(StaticError.Field(), ast.field)
 
     def visitId(self, ast: AST.Id, given_scope: list[ScopeObject]):
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
@@ -352,7 +374,7 @@ class StaticChecker(BaseVisitor):
         return None
 
     def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: list[ScopeObject]):
-        receiver_type = self.visit(ast.receiver, given_scope + [IsTypenameVisit()])
+        receiver_type = self.visit(ast.receiver, given_scope + [IsExpressionVisit()])
         if isinstance(receiver_type, AST.Id):
             # Resolve the type (again)
             for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
@@ -362,11 +384,8 @@ class StaticChecker(BaseVisitor):
                             if field_name == ast.field:
                                 return field_type
                         raise StaticError.Undeclared(StaticError.Field(), ast.field)
-                    elif isinstance(sym, InterfaceSymbol):
-                        raise StaticError.Undeclared(StaticError.Field(), ast.field)
                     else:
-                        # TODO: ???!!!
-                        raise StaticError.Undeclared(StaticError.Field(), ast.field)
+                        raise StaticError.TypeMismatch(ast)
         else:
             raise StaticError.Undeclared(StaticError.Field(), ast.field)
 

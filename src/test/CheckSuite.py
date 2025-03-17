@@ -20,8 +20,22 @@ class CheckSuite(unittest.TestCase):
 
     def test_1(self):
         input = """
-            func X() float {
-                return 2.5
+            func sqrt(v float) float {
+                return 1.0;
+            }
+        
+            type Point struct {
+                x float;
+                y float;
+            }
+            
+            func (p Point) Length() float {
+                return sqrt(x * x + y * y);
+            }
+        
+            func X() Point {
+                var a = Point{};
+                var x float = a.Length();
             }
         """
         expect = ""
