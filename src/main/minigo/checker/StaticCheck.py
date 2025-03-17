@@ -70,6 +70,11 @@ class ConstantSymbol(Symbol):
     def set_type(self, new_type: AST.Type):
         self.resolved_type = new_type
 
+class FunctionParameterSymbol(Symbol):
+    def __init__(self, name: str, original_ast: AST.ParamDecl):
+        super().__init__(name)
+        self.original_ast = original_ast
+
 # Some state, who cares.
 
 class CurrentFunction(ScopeObject):
@@ -184,6 +189,20 @@ class StaticChecker(BaseVisitor):
     def visitFuncDecl(self, ast: AST.FuncDecl, scope: list[ScopeObject]):
         my_scope = scope + [CurrentFunction(ast)]
 
+        # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces and
+        # functions.
+        for param in ast.params:
+            for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), my_scope):
+                if existing_param.name == param.parName:
+                    raise StaticError.Redeclared(StaticError.Parameter(), param.parName)
+            self.visit(param.parType, my_scope)
+            my_scope.append(FunctionParameterSymbol(param.parName, param))
+
+        # Now check the return type.
+        self.visit(ast.retType, my_scope)
+
+        # Everything is done now; we can visit the inner block.
+        self.visit(ast.body, my_scope)
 
     def visitMethodDecl(self, ast, param):
         return None
