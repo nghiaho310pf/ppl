@@ -82,6 +82,14 @@ class CurrentFunction(ScopeObject):
         super().__init__()
         self.original_ast = original_ast
 
+class IsExpressionVisit(ScopeObject):
+    def __init__(self):
+        super().__init__()
+
+class IsTypenameVisit(ScopeObject):
+    def __init__(self):
+        super().__init__()
+
 # class StaticChecker(BaseVisitor,Utils):
 class StaticChecker(BaseVisitor):
     def __init__(self, root_ast):
@@ -164,8 +172,8 @@ class StaticChecker(BaseVisitor):
         # We don't check name dupes; that's done by the outer layer.
         # Instead, we only visit the inner expression and check for type mismatches.
 
-        explicit_type = self.visit(ast.varType, given_scope) if ast.varType is not None else None
-        implicit_type = self.visit(ast.varInit, given_scope) if ast.varInit is not None else None
+        explicit_type: AST.Type | None = self.visit(ast.varType, given_scope + [IsTypenameVisit()]) if ast.varType is not None else None
+        implicit_type: AST.Type | None = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if ast.varInit is not None else None
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
@@ -176,8 +184,8 @@ class StaticChecker(BaseVisitor):
 
     def visitConstDecl(self, ast: AST.ConstDecl, given_scope: list[ScopeObject]):
         # We don't check name dupes here either; that's done by the outer layer.
-        explicit_type = self.visit(ast.conType, given_scope) if ast.conType is not None else None
-        implicit_type = self.visit(ast.iniExpr, given_scope) if ast.iniExpr is not None else None
+        explicit_type: AST.Type | None = self.visit(ast.conType, given_scope + [IsTypenameVisit()]) if ast.conType is not None else None
+        implicit_type: AST.Type | None = self.visit(ast.iniExpr, given_scope + [IsExpressionVisit()]) if ast.iniExpr is not None else None
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
@@ -186,23 +194,23 @@ class StaticChecker(BaseVisitor):
 
         return implicit_type if implicit_type is not None else explicit_type
 
-    def visitFuncDecl(self, ast: AST.FuncDecl, scope: list[ScopeObject]):
-        my_scope = scope + [CurrentFunction(ast)]
+    def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: list[ScopeObject]):
+        scope = given_scope + [CurrentFunction(ast)]
 
         # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces and
         # functions.
         for param in ast.params:
-            for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), my_scope):
+            for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), scope):
                 if existing_param.name == param.parName:
                     raise StaticError.Redeclared(StaticError.Parameter(), param.parName)
-            self.visit(param.parType, my_scope)
-            my_scope.append(FunctionParameterSymbol(param.parName, param))
+            self.visit(param.parType, scope + [IsTypenameVisit()])
+            scope.append(FunctionParameterSymbol(param.parName, param))
 
         # Now check the return type.
-        self.visit(ast.retType, my_scope)
+        self.visit(ast.retType, scope + [IsTypenameVisit()])
 
         # Everything is done now; we can visit the inner block.
-        self.visit(ast.body, my_scope)
+        self.visit(ast.body, scope)
 
     def visitMethodDecl(self, ast, param):
         return None
@@ -234,8 +242,33 @@ class StaticChecker(BaseVisitor):
     def visitInterfaceType(self, ast, param):
         return None
 
-    def visitBlock(self, ast, param):
-        return None
+    def visitBlock(self, ast: AST.Block, given_scope: list[ScopeObject]):
+        scope = given_scope.copy()
+
+        # Vars and consts within the same block cannot collide names. Inner blocks can shadow.
+        this_block_names = []
+        for statement in ast.member:
+            if isinstance(statement, AST.VarDecl):
+                if statement.varName in this_block_names:
+                    raise StaticError.Redeclared(StaticError.Variable(), statement.varName)
+                this_block_names.append(statement.varName)
+
+                sym = VariableSymbol(statement.varName, statement)
+                resolved_type = self.visit(statement, scope)
+                sym.set_type(resolved_type)
+                scope.append(sym)
+            elif isinstance(statement, AST.ConstDecl):
+                if statement.conName in this_block_names:
+                    raise StaticError.Redeclared(StaticError.Constant(), statement.conName)
+                this_block_names.append(statement.conName)
+
+                sym = ConstantSymbol(statement.conName, statement)
+                resolved_type = self.visit(statement, scope)
+                sym.set_type(resolved_type)
+                scope.append(sym)
+            else:
+                # This is probably a statement/expression.
+                self.visit(statement, scope + [IsExpressionVisit()])
 
     def visitAssign(self, ast, param):
         return None
@@ -258,8 +291,17 @@ class StaticChecker(BaseVisitor):
     def visitBreak(self, ast, param):
         return None
 
-    def visitReturn(self, ast, param):
-        return None
+    def visitReturn(self, ast: AST.Return, given_scope: list[ScopeObject]):
+        # Are we in a return?
+        current_function: CurrentFunction | None = next(filter(lambda x: isinstance(x, CurrentFunction), reversed(given_scope)))
+        if current_function is None:
+            # TODO: what to raise here?
+            raise StaticError.Undeclared(StaticError.Function(), "(no function)")
+
+        expr_type = self.visit(ast.expr, given_scope)
+
+        if not self.compare_types(expr_type, current_function.original_ast.retType):
+            raise StaticError.TypeMismatch(ast.expr)
 
     def visitBinaryOp(self, ast, param):
         return None
@@ -273,14 +315,55 @@ class StaticChecker(BaseVisitor):
     def visitMethCall(self, ast, param):
         return None
 
-    def visitId(self, ast, param):
-        return None
+    def visitId(self, ast: AST.Id, given_scope: list[ScopeObject]):
+        for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+            if sym.name == ast.name:
+                if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
+                    id_mode: IsTypenameVisit | IsExpressionVisit | None = next(filter(lambda x: isinstance(x, IsTypenameVisit) or isinstance(x, IsExpressionVisit), reversed(given_scope)))
+                    if isinstance(id_mode, IsTypenameVisit):
+                        return ast
+                    elif isinstance(id_mode, IsExpressionVisit):
+                        # I guess we don't allow bare-referring to structs and interfaces?
+                        # TODO: ask Phung about this.
+                        raise StaticError.TypeMismatch(ast)
+                    else:
+                        # TODO: ???!!!
+                        raise StaticError.TypeMismatch(ast)
+                elif isinstance(sym, FunctionSymbol):
+                    # I guess we don't allow bare-referring to functions?
+                    # TODO: ask Phung about this.
+                    raise StaticError.TypeMismatch(ast)
+                elif isinstance(sym, ConstantSymbol):
+                    return sym.resolved_type
+                elif isinstance(sym, VariableSymbol):
+                    return sym.resolved_type
+                elif isinstance(sym, FunctionParameterSymbol):
+                    return sym.original_ast.parType
+                else:
+                    return None
+        raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
 
     def visitArrayCell(self, ast, param):
         return None
 
-    def visitFieldAccess(self, ast, param):
-        return None
+    def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: list[ScopeObject]):
+        receiver_type = self.visit(ast.receiver, given_scope + [IsTypenameVisit()])
+        if isinstance(receiver_type, AST.Id):
+            # Resolve the type (again)
+            for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
+                if sym.name == receiver_type.name:
+                    if isinstance(sym, StructSymbol):
+                        for field_name, field_type in sym.original_ast.elements:
+                            if field_name == ast.field:
+                                return field_type
+                        raise StaticError.Undeclared(StaticError.Field(), ast.field)
+                    elif isinstance(sym, InterfaceSymbol):
+                        raise StaticError.Undeclared(StaticError.Field(), ast.field)
+                    else:
+                        # TODO: ???!!!
+                        raise StaticError.Undeclared(StaticError.Field(), ast.field)
+        else:
+            raise StaticError.Undeclared(StaticError.Field(), ast.field)
 
     def visitIntLiteral(self, ast, param):
         return AST.IntType()
@@ -295,41 +378,25 @@ class StaticChecker(BaseVisitor):
         return AST.StringType()
 
     def visitArrayLiteral(self, ast: AST.ArrayLiteral, scope: list[ScopeObject]):
+        # TODO: check lengths, array type and element type.
         return
 
-    def visitStructLiteral(self, ast, param):
-        return None
+    def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: list[ScopeObject]):
+        # Find the struct name.
+        struct_ast: AST.StructType | None = None
+        for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+            if sym.name == ast.name:
+                if isinstance(sym, StructSymbol) or isinstance(sym, StructSymbol):
+                    struct_ast = sym.original_ast
+                elif isinstance(sym, FunctionSymbol) or isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
+                    raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+                else:
+                    return None
+        if struct_ast is None:
+            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+
+        # TODO: check each field exists and that there are no dupes.
 
     def visitNilLiteral(self, ast, param):
+        # TODO: should there be a class to express the (lack of a) type of a nil literal?
         return None
-
-    # def visitVarDecl(self, ast, c):
-    #     res = self.lookup(ast.varName, c, lambda x: x.name)
-    #     if not res is None:
-    #         raise Redeclared(Variable(), ast.varName)
-    #     if ast.varInit:
-    #         initType = self.visit(ast.varInit, c)
-    #         if ast.varType is None:
-    #             ast.varType = initType
-    #         if not type(ast.varType) is type(initType):
-    #             raise TypeMismatch(ast)
-    #     return Symbol(ast.varName, ast.varType,None)
-    #
-    #
-    # def visitFuncDecl(self,ast, c):
-    #     res = self.lookup(ast.name, c, lambda x: x.name)
-    #     if not res is None:
-    #         raise Redeclared(Function(), ast.name)
-    #     return Symbol(ast.name, MType([], ast.retType))
-    #
-    # def visitIntLiteral(self,ast, c):
-    #     return AST.IntType()
-    #
-    # def visitFloatLiteral(self,ast, c):
-    #     return AST.FloatType()
-    #
-    # def visitId(self,ast,c):
-    #     res = self.lookup(ast.name, c, lambda x: x.name)
-    #     if res is None:
-    #         raise Undeclared(Identifier(), ast.name)
-    #     return res.mtype
