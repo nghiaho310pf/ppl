@@ -402,6 +402,8 @@ class StaticChecker(BaseVisitor):
 
         # TODO: check each field exists and that there are no dupes.
 
+        return AST.Id(ast.name)
+
     def visitNilLiteral(self, ast, param):
         # TODO: should there be a class to express the (lack of a) type of a nil literal?
         return None
