@@ -501,6 +501,8 @@ class StaticChecker(BaseVisitor):
         current_function_scope_object = CurrentFunction(self_sym.resolved_types)
         self.visit(ast.body, my_scope + [current_function_scope_object])
 
+        # TODO: add a ReturnBeacon to track existence of returns.
+
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[ScopeObject]):
         # This might be the 2nd ugliest part of the entire file to be quite honest.
         if len(given_scope) < 1:
