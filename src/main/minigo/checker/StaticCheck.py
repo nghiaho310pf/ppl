@@ -70,6 +70,10 @@ class CurrentFunction(ScopeObject):
     def __init__(self, original_ast: AST.FuncDecl):
         super().__init__()
         self.original_ast = original_ast
+        self.resolved_return_type = None
+
+    def set_return_type(self, new_type: AST.Type):
+        self.resolved_return_type = new_type
 
 # Identifier resolution mode
 
@@ -106,6 +110,12 @@ class StaticChecker(BaseVisitor):
     def compare_types(a: AST.Type, b: AST.Type):
         if isinstance(a, AST.Id) and isinstance(b, AST.Id):
             return a.name == b.name
+        if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
+            if (not StaticChecker.compare_types(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
+                return False
+            for i, dim in enumerate(a.dimens):
+                if not isinstance(dim, AST.IntLiteral):
+                    return False
         return type(a) == type(b)
 
     # Just roll our own recursion here instead of using StaticChecker's cancerous visitor mechanism.
@@ -342,21 +352,22 @@ class StaticChecker(BaseVisitor):
                 if type(thing.recType) is not AST.Id:
                     raise StaticError.TypeMismatch(thing) # TODO: do something about this?
                 receiver_type_id: AST.Id = thing.recType # downcast so the IDE actually shuts up about it
+                struct_found = False
                 for maybe_struct in filter(lambda s: isinstance(s, Symbol), scope):
-                    if isinstance(maybe_struct, StructSymbol):
-                        struct_found = False
-                        if maybe_struct.name == receiver_type_id.name:
+                    if maybe_struct.name == receiver_type_id.name:
+                        if isinstance(maybe_struct, StructSymbol):
                             for existing_method in maybe_struct.original_ast.methods:
                                 if existing_method.fun.name == thing.fun.name:
                                     raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
-                            maybe_struct.original_ast.methods.append(thing)
-                            struct_found = True
-                            break
-                        if not struct_found:
-                            # TODO: this is probably correct but I should ask Phung just to be sure.
-                            raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
-                    else:
-                        raise StaticError.TypeMismatch(thing)
+                                maybe_struct.original_ast.methods.append(thing)
+                                struct_found = True
+                                break
+                        else:
+                            print(maybe_struct.original_ast.name)
+                            raise StaticError.TypeMismatch(thing)
+                if not struct_found:
+                    # TODO: this is probably correct but I should ask Phung just to be sure.
+                    raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
                 # Recursion may be used so it's added to the struct first above.
                 self.visit(thing, scope)
             elif isinstance(thing, AST.VarDecl):
@@ -407,7 +418,10 @@ class StaticChecker(BaseVisitor):
         return implicit_type if implicit_type is not None else explicit_type
 
     def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[ScopeObject]):
-        scope = given_scope + [CurrentFunction(ast)]
+        current_function_scope_object = CurrentFunction(ast)
+        current_function_scope_object.set_return_type(self.visit(ast.retType, given_scope + [IsTypenameVisit()]))
+
+        scope = given_scope + [current_function_scope_object]
 
         # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces and
         # functions.
@@ -418,7 +432,6 @@ class StaticChecker(BaseVisitor):
             self.visit(param.parType, scope + [IsTypenameVisit()])
             scope.append(FunctionParameterSymbol(param.parName, param))
 
-        self.visit(ast.retType, scope + [IsTypenameVisit()])
         self.visit(ast.body, scope)
 
     def visitMethodDecl(self, ast, param):
@@ -543,14 +556,14 @@ class StaticChecker(BaseVisitor):
             # TODO: what to raise here?
             raise StaticError.Undeclared(StaticError.Function(), "(no function)")
 
-        if isinstance(current_function.original_ast.retType, AST.VoidType):
+        if isinstance(current_function.resolved_return_type, AST.VoidType):
             if ast.expr is not None:
                 raise StaticError.TypeMismatch(ast)
         else:
             if ast.expr is None:
                 raise StaticError.TypeMismatch(ast)
             expr_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
-            if not self.compare_types(expr_type, current_function.original_ast.retType):
+            if not self.compare_types(expr_type, current_function.resolved_return_type):
                 raise StaticError.TypeMismatch(ast)
 
     def visitBinaryOp(self, ast, param):
