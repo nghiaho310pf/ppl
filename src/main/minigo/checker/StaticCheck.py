@@ -628,6 +628,7 @@ class StaticChecker(BaseVisitor):
     def visitAssign(self, ast: AST.Assign, given_scope: List[ScopeObject]):
         lhs_type = self.visit(ast.lhs, given_scope + [IsExpressionVisit()])
         rhs_type = self.visit(ast.rhs, given_scope + [IsExpressionVisit()])
+        # TODO: allow implicit casting here.
         if not self.compare_types(lhs_type, rhs_type):
             raise StaticError.TypeMismatch(ast)
         # Return nothing, I guess.
