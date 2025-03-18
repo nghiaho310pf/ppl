@@ -442,13 +442,16 @@ class StaticChecker(BaseVisitor):
     def visitVoidType(self, ast, param):
         return ast
 
-    def visitArrayType(self, ast, param):
-        return ast
+    def visitArrayType(self, ast: AST.ArrayType, given_scope: List[ScopeObject]):
+        # Evaluate indices so we can type-check.
+        return AST.ArrayType([self.comptime_evaluate(it, given_scope) for it in ast.dimens], ast.eleType)
 
     def visitStructType(self, ast, param):
+        # TODO: throw a debug exception here.
         return None
 
     def visitInterfaceType(self, ast, param):
+        # TODO: throw a debug exception here.
         return None
 
     def visitBlock(self, ast: AST.Block, given_scope: List[ScopeObject]):
@@ -477,9 +480,40 @@ class StaticChecker(BaseVisitor):
                 sym.set_type(resolved_type)
                 sym.set_value(resolved_value)
                 scope.append(sym)
+            elif isinstance(statement, AST.Expr):
+                expr_type = self.visit(statement, scope + [IsExpressionVisit()])
+                # I guess Phung doesn't want any code to discard any values.
+                if not isinstance(expr_type, AST.VoidType):
+                    raise StaticError.TypeMismatch(ast)
+            elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
+                lhs: AST.Id = statement.lhs
+                # Is the name not declared? If so, turn it into a variable declaration.
+                existing_maybe_variable = next(filter(lambda x: x.name == lhs.name, reversed(scope)))
+                if existing_maybe_variable is None:
+                    this_block_names.append(lhs.name)
+
+                    # TODO: should VariableSymbol's 2nd argument type accept assignment statement ASTs too?
+                    sym = VariableSymbol(lhs.name, statement)
+
+                    implicit_type: AST.Type | None = None
+                    try:
+                        implicit_type = self.visit(statement.rhs, scope + [IsExpressionVisit()])
+                    except StaticError.Undeclared as e:
+                        if isinstance(e.k, StaticError.Identifier) and e.n == lhs.name:
+                            # TODO: is this kind of useless?
+                            raise StaticError.Undeclared(StaticError.Identifier(), lhs.name)
+                        raise e
+                    # No voids allowed.
+                    if isinstance(implicit_type, AST.VoidType):
+                        raise StaticError.TypeMismatch(ast)
+
+                    sym.set_type(implicit_type)
+                    scope.append(sym)
+                else:
+                    self.visit(statement, scope)
             else:
-                # This is probably a statement/expression.
-                self.visit(statement, scope + [IsExpressionVisit()])
+                # This is probably a statement.
+                self.visit(statement, scope)
 
     def visitAssign(self, ast, param):
         return None
@@ -515,7 +549,7 @@ class StaticChecker(BaseVisitor):
         else:
             if ast.expr is None:
                 raise StaticError.TypeMismatch(ast)
-            expr_type = self.visit(ast.expr, given_scope)
+            expr_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
             if not self.compare_types(expr_type, current_function.original_ast.retType):
                 raise StaticError.TypeMismatch(ast)
 
