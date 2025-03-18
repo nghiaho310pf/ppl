@@ -145,6 +145,7 @@ class TestChecker:
                 line = line[:-1]
             raise Exception(f"Expected {expect}\n"
                             f"              found {line}")
+        # res = checker.check()
 
         # return line == expect
         return True

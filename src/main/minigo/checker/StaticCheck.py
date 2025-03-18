@@ -2,7 +2,6 @@
  * @author nghia.ho310pf
  * @note https://www.youtube.com/watch?v=6hUH7RxU2yQ
 """
-from pip._vendor.rich import scope
 
 import AST
 from Visitor import *
@@ -16,6 +15,21 @@ class ScopeObject:
     def __init__(self):
         pass
 
+# For caching resolved types.
+# For now this purely only exists because there are comptime expressions that must be evaluated
+# to fully resolve array type ASTs.
+
+class ResolvedFunctionTypes:
+    def __init__(self):
+        self.return_type = None
+        self.parameter_types = None
+
+    def set_return_type(self, new_type: AST.Type):
+        self.return_type = new_type
+
+    def set_parameter_types(self, param_types: List[AST.Type]):
+        self.parameter_types = param_types
+
 # For name resolution.
 
 class Symbol(ScopeObject):
@@ -27,6 +41,7 @@ class StructSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.StructType):
         super().__init__(name)
         self.original_ast = original_ast
+        self.method_resolved_types = dict[str, ResolvedFunctionTypes]()
 
 class InterfaceSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.InterfaceType):
@@ -37,6 +52,7 @@ class FunctionSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.FuncDecl):
         super().__init__(name)
         self.original_ast = original_ast
+        self.resolved_types = ResolvedFunctionTypes()
 
 class VariableSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.VarDecl):
@@ -61,20 +77,17 @@ class ConstantSymbol(Symbol):
         self.resolved_value = new_value
 
 class FunctionParameterSymbol(Symbol):
-    def __init__(self, name: str, original_ast: AST.ParamDecl):
+    def __init__(self, name: str, original_ast: AST.ParamDecl, resolved_type: AST.Type):
         super().__init__(name)
         self.original_ast = original_ast
+        self.resolved_type = resolved_type
 
 # For banning illegal returns.
 
 class CurrentFunction(ScopeObject):
-    def __init__(self, original_ast: AST.FuncDecl):
+    def __init__(self, resolved_types: ResolvedFunctionTypes):
         super().__init__()
-        self.original_ast = original_ast
-        self.resolved_return_type = None
-
-    def set_return_type(self, new_type: AST.Type):
-        self.resolved_return_type = new_type
+        self.resolved_types = resolved_types
 
 # Identifier resolution mode
 
@@ -328,7 +341,7 @@ class StaticChecker(BaseVisitor):
         else:
             return ast
 
-    def checkNestedList(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: list[AST.IntLiteral], given_scope: list[ScopeObject]):
+    def check_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: list[AST.IntLiteral], given_scope: list[ScopeObject]):
         if not isinstance(ast, list):
             raise StaticError.TypeMismatch(ast)
         if len(ast) != dimens[0].value:
@@ -336,7 +349,7 @@ class StaticChecker(BaseVisitor):
             raise StaticError.TypeMismatch(original_ast)
         if len(dimens) > 1:
             for sublist in ast:
-                self.checkNestedList(original_ast, sublist, ele_type, dimens[1:])
+                self.check_nested_list(original_ast, sublist, ele_type, dimens[1:])
         else:
             for ele in ast:
                 this_ele_type = self.visit(ele, given_scope)
@@ -348,35 +361,41 @@ class StaticChecker(BaseVisitor):
         return self.visit(self.root_ast, [])
 
     def visitProgram(self, ast: AST.Program, given_scope: List[ScopeObject]):
-        scope: List[ScopeObject] = given_scope.copy()
+        my_scope: List[ScopeObject] = given_scope.copy()
 
         for thing in ast.decl:
             if isinstance(thing, AST.StructType):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
-                self.visit(thing, scope)
-                scope.append(StructSymbol(thing.name, thing))
+                self.visit(thing, my_scope)
+                my_scope.append(StructSymbol(thing.name, thing))
             elif isinstance(thing, AST.InterfaceType):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
-                self.visit(thing, scope)
-                scope.append(InterfaceSymbol(thing.name, thing))
+                self.visit(thing, my_scope)
+                my_scope.append(InterfaceSymbol(thing.name, thing))
             elif isinstance(thing, AST.FuncDecl):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Function(), thing.name)
-                # Recursion may be used so we'll append it to scope first.
-                scope.append(FunctionSymbol(thing.name, thing))
-                self.visit(thing, scope)
+
+                # Resolve its return type and parameter types before letting it appear in scope.
+                sym = FunctionSymbol(thing.name, thing)
+                sym.resolved_types.set_return_type(self.visit(thing.retType, my_scope + [IsTypenameVisit()]))
+                sym.resolved_types.set_parameter_types([self.visit(it.parType, my_scope + [IsTypenameVisit()]) for it in thing.params])
+
+                # Recursion may be used so we'll append it to scope first before visiting.
+                my_scope.append(sym)
+                self.visit(thing, my_scope)
             elif isinstance(thing, AST.MethodDecl):
                 # Preventative hack-fix for ASTGeneration.py/AST.py flaw.
                 if type(thing.recType) is not AST.Id:
                     raise StaticError.TypeMismatch(thing) # TODO: do something about this?
                 receiver_type_id: AST.Id = thing.recType # downcast so the IDE actually shuts up about it
                 struct_found = False
-                for maybe_struct in filter(lambda s: isinstance(s, Symbol), scope):
+                for maybe_struct in filter(lambda s: isinstance(s, Symbol), my_scope):
                     if maybe_struct.name == receiver_type_id.name:
                         if isinstance(maybe_struct, StructSymbol):
                             for existing_method in maybe_struct.original_ast.methods:
@@ -384,6 +403,9 @@ class StaticChecker(BaseVisitor):
                                     raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
                             maybe_struct.original_ast.methods.append(thing)
                             struct_found = True
+
+                            # Parameter type resolution is done in visitFuncDecl. It's dirty but it works.
+
                             break
                         else:
                             raise StaticError.TypeMismatch(thing)
@@ -391,25 +413,25 @@ class StaticChecker(BaseVisitor):
                     # TODO: this is probably correct but I should ask Phung just to be sure.
                     raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
                 # Recursion may be used so it's added to the struct first above.
-                self.visit(thing, scope)
+                self.visit(thing, my_scope)
             elif isinstance(thing, AST.VarDecl):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.varName == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Variable(), thing.varName)
-                resolved_type = self.visit(thing, scope)
+                resolved_type = self.visit(thing, my_scope)
                 sym = VariableSymbol(thing.varName, thing)
                 sym.set_type(resolved_type)
-                scope.append(sym)
+                my_scope.append(sym)
             elif isinstance(thing, AST.ConstDecl):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), scope):
+                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.conName == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Variable(), thing.conName)
-                resolved_type = self.visit(thing, scope)
-                resolved_value = self.comptime_evaluate(thing.iniExpr, scope) if (thing.iniExpr is not None) else None
+                resolved_type = self.visit(thing, my_scope)
+                resolved_value = self.comptime_evaluate(thing.iniExpr, my_scope) if (thing.iniExpr is not None) else None
                 sym = ConstantSymbol(thing.conName, thing)
                 sym.set_type(resolved_type)
                 sym.set_value(resolved_value)
-                scope.append(sym)
+                my_scope.append(sym)
 
         # TODO: do we return anything? Ask Phung.
 
@@ -441,21 +463,31 @@ class StaticChecker(BaseVisitor):
         return implicit_type if implicit_type is not None else explicit_type
 
     def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[ScopeObject]):
-        current_function_scope_object = CurrentFunction(ast)
-        current_function_scope_object.set_return_type(self.visit(ast.retType, given_scope + [IsTypenameVisit()]))
+        # This might be the ugliest part of the entire file to be quite honest.
+        if len(given_scope) < 1:
+            # !!??!!!??
+            raise StaticError.TypeMismatch(ast)
+        self_sym = given_scope[-1]
+        if (not isinstance(self_sym, FunctionSymbol)) or self_sym.name != ast.name:
+            # Sanity check failed !!??!!!??
+            raise StaticError.TypeMismatch(ast)
 
-        scope = given_scope + [current_function_scope_object]
+        current_function_scope_object = CurrentFunction(self_sym.resolved_types)
+        my_scope = given_scope + [current_function_scope_object]
 
-        # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces and
-        # functions.
+        # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces
+        # and functions.
+        param_types = []
         for param in ast.params:
-            for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), scope):
+            for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), my_scope):
                 if existing_param.name == param.parName:
                     raise StaticError.Redeclared(StaticError.Parameter(), param.parName)
-            self.visit(param.parType, scope + [IsTypenameVisit()])
-            scope.append(FunctionParameterSymbol(param.parName, param))
+            resolved_param_type = self.visit(param.parType, my_scope + [IsTypenameVisit()])
+            param_types.append(resolved_param_type)
+            my_scope.append(FunctionParameterSymbol(param.parName, param, resolved_param_type))
+        self_sym.resolved_types.set_parameter_types(param_types)
 
-        self.visit(ast.body, scope)
+        self.visit(ast.body, my_scope)
 
     def visitMethodDecl(self, ast, param):
         # TODO: complete this.
@@ -493,7 +525,7 @@ class StaticChecker(BaseVisitor):
         return None
 
     def visitBlock(self, ast: AST.Block, given_scope: List[ScopeObject]):
-        scope = given_scope.copy()
+        my_scope = given_scope.copy()
 
         # Vars and consts within the same block cannot collide names. Inner blocks can shadow.
         this_block_names = []
@@ -504,29 +536,29 @@ class StaticChecker(BaseVisitor):
                 this_block_names.append(statement.varName)
 
                 sym = VariableSymbol(statement.varName, statement)
-                resolved_type = self.visit(statement, scope)
+                resolved_type = self.visit(statement, my_scope)
                 sym.set_type(resolved_type)
-                scope.append(sym)
+                my_scope.append(sym)
             elif isinstance(statement, AST.ConstDecl):
                 if statement.conName in this_block_names:
                     raise StaticError.Redeclared(StaticError.Constant(), statement.conName)
                 this_block_names.append(statement.conName)
 
                 sym = ConstantSymbol(statement.conName, statement)
-                resolved_type = self.visit(statement, scope)
-                resolved_value = self.comptime_evaluate(statement.iniExpr, scope) if (statement.iniExpr is not None) else None
+                resolved_type = self.visit(statement, my_scope)
+                resolved_value = self.comptime_evaluate(statement.iniExpr, my_scope) if (statement.iniExpr is not None) else None
                 sym.set_type(resolved_type)
                 sym.set_value(resolved_value)
-                scope.append(sym)
+                my_scope.append(sym)
             elif isinstance(statement, AST.Expr):
-                expr_type = self.visit(statement, scope + [IsExpressionVisit()])
+                expr_type = self.visit(statement, my_scope + [IsExpressionVisit()])
                 # I guess Phung doesn't want any code to discard any values.
                 if not isinstance(expr_type, AST.VoidType):
                     raise StaticError.TypeMismatch(ast)
             elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
-                existing_maybe_variable = next(filter(lambda x: x.name == lhs.name, reversed(scope)), None)
+                existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
                 if existing_maybe_variable is None:
                     this_block_names.append(lhs.name)
 
@@ -534,7 +566,7 @@ class StaticChecker(BaseVisitor):
                     sym = VariableSymbol(lhs.name, statement)
 
                     try:
-                        implicit_type = self.visit(statement.rhs, scope + [IsExpressionVisit()])
+                        implicit_type = self.visit(statement.rhs, my_scope + [IsExpressionVisit()])
                     except StaticError.Undeclared as e:
                         if isinstance(e.k, StaticError.Identifier) and e.n == lhs.name:
                             # TODO: is this kind of useless?
@@ -545,12 +577,12 @@ class StaticChecker(BaseVisitor):
                         raise StaticError.TypeMismatch(ast)
 
                     sym.set_type(implicit_type)
-                    scope.append(sym)
+                    my_scope.append(sym)
                 else:
-                    self.visit(statement, scope)
+                    self.visit(statement, my_scope)
             else:
                 # This is probably a statement.
-                self.visit(statement, scope)
+                self.visit(statement, my_scope)
 
     def visitAssign(self, ast: AST.Assign, given_scope: List[ScopeObject]):
         lhs_type = self.visit(ast.lhs, given_scope + [IsExpressionVisit()])
@@ -595,14 +627,14 @@ class StaticChecker(BaseVisitor):
             # TODO: what to raise here?
             raise StaticError.Undeclared(StaticError.Function(), "(no function)")
 
-        if isinstance(current_function.resolved_return_type, AST.VoidType):
+        if isinstance(current_function.resolved_types.return_type, AST.VoidType):
             if ast.expr is not None:
                 raise StaticError.TypeMismatch(ast)
         else:
             if ast.expr is None:
                 raise StaticError.TypeMismatch(ast)
             expr_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
-            if not self.compare_types(expr_type, current_function.resolved_return_type):
+            if not self.compare_types(expr_type, current_function.resolved_types.return_type):
                 raise StaticError.TypeMismatch(ast)
 
     def visitBinaryOp(self, ast: AST.BinaryOp, given_scope: List[ScopeObject]):
@@ -668,7 +700,23 @@ class StaticChecker(BaseVisitor):
                     if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
                         # TODO: ask Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
-                    return sym.original_ast.retType
+
+                    # Check arguments.
+                    # TODO: allow implicit casting here.
+                    if len(ast.args) != len(sym.original_ast.params):
+                        raise StaticError.TypeMismatch(ast)
+                    # Sanity check
+                    if len(sym.original_ast.params) != len(sym.resolved_types.parameter_types):
+                        # Sanity check failed !!??!!!??
+                        raise StaticError.TypeMismatch(ast)
+
+                    for i, arg in enumerate(ast.args):
+                        # No need to append IsExpressionVisit (we're already in one.) TODO: add a sanity check for that
+                        arg_type = self.visit(arg, given_scope)
+                        if not self.compare_types(arg_type, sym.resolved_types.parameter_types[i]):
+                            raise StaticError.TypeMismatch(ast)
+
+                    return sym.resolved_types.return_type
                 else:
                     raise StaticError.TypeMismatch(ast)
         raise StaticError.Undeclared(StaticError.Function(), ast.funName)
@@ -730,7 +778,7 @@ class StaticChecker(BaseVisitor):
                     if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
                         # TODO: ask Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
-                    return sym.original_ast.parType
+                    return sym.resolved_type
                 else:
                     return None
         raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
@@ -769,7 +817,7 @@ class StaticChecker(BaseVisitor):
     def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[ScopeObject]):
         dimens = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
         ele_type = self.visit(ast.eleType, given_scope)
-        self.checkNestedList(ast, ast.value, ele_type, dimens, given_scope)
+        self.check_nested_list(ast, ast.value, ele_type, dimens, given_scope)
         # TODO: maybe assert ele_type and ast.eleType are the exact same
         return AST.ArrayType(dimens, ele_type)
 
