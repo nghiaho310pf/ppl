@@ -63,6 +63,6 @@ class CheckSuite(unittest.TestCase):
         input = """
             const q float = 1 + 3
         """
-        expect = "Type Mismatch: Return(ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(0),IntLiteral(1),IntLiteral(2)]))\n"
+        expect = "ConstDecl(q,FloatType,BinaryOp(IntLiteral(1),+,IntLiteral(3)))\n"
         self.assertTrue(TestChecker.test(input, expect, 402))
 

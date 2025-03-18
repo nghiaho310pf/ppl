@@ -2,6 +2,7 @@
  * @author nghia.ho310pf
  * @note https://www.youtube.com/watch?v=6hUH7RxU2yQ
 """
+from pip._vendor.rich import scope
 
 import AST
 from Visitor import *
@@ -200,12 +201,12 @@ class StaticChecker(BaseVisitor):
             lhs = StaticChecker.comptime_evaluate(ast.left, given_scope)
             rhs = StaticChecker.comptime_evaluate(ast.right, given_scope)
             if ast.op == "+":
-                if isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
-                    return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
-                elif isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value + rhs.value)
                 elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) + float(rhs.value))
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == "-":
@@ -239,7 +240,7 @@ class StaticChecker(BaseVisitor):
                     return AST.IntLiteral(lhs.value % rhs.value)
                 elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
                         isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
-                    return AST.FloatLiteral(float(lhs.value) / float(rhs.value))
+                    return AST.FloatLiteral(float(lhs.value) % float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == ">":
@@ -317,7 +318,7 @@ class StaticChecker(BaseVisitor):
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == "-":
                 if isinstance(rhs, AST.IntLiteral):
-                    return AST.IntLiteral(- rhs.value)
+                    return AST.IntLiteral(-rhs.value)
                 elif isinstance(rhs, AST.FloatLiteral):
                     return AST.FloatLiteral(-rhs.value)
                 else:
@@ -551,26 +552,40 @@ class StaticChecker(BaseVisitor):
                 # This is probably a statement.
                 self.visit(statement, scope)
 
-    def visitAssign(self, ast, param):
+    def visitAssign(self, ast: AST.Assign, given_scope: List[ScopeObject]):
+        lhs_type = self.visit(ast.lhs, given_scope + [IsExpressionVisit()])
+        rhs_type = self.visit(ast.rhs, given_scope + [IsExpressionVisit()])
+        if not self.compare_types(lhs_type, rhs_type):
+            raise StaticError.TypeMismatch(ast)
+        # Return nothing, I guess.
 
+    def visitIf(self, ast: AST.If, given_scope: List[ScopeObject]):
+        condition_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
+        if not isinstance(condition_type, AST.BoolType):
+            # TODO: Ask Phung whether to pass ast or ast.expr.
+            raise StaticError.TypeMismatch(ast.expr)
+        self.visit(ast.thenStmt, given_scope)
+        if ast.elseStmt is not None:
+            self.visit(ast.elseStmt, given_scope)
+
+    def visitForBasic(self, ast: AST.ForBasic, given_scope: List[ScopeObject]):
+        # TODO: complete this. Use IsForLoopVisit.
         return None
 
-    def visitIf(self, ast, param):
+    def visitForStep(self, ast, given_scope: List[ScopeObject]):
+        # TODO: complete this. Use IsForLoopVisit.
         return None
 
-    def visitForBasic(self, ast, param):
+    def visitForEach(self, ast, given_scope: List[ScopeObject]):
+        # TODO: complete this. Use IsForLoopVisit.
         return None
 
-    def visitForStep(self, ast, param):
+    def visitContinue(self, ast, given_scope: List[ScopeObject]):
+        # TODO: complete this. Use IsForLoopVisit.
         return None
 
-    def visitForEach(self, ast, param):
-        return None
-
-    def visitContinue(self, ast, param):
-        return None
-
-    def visitBreak(self, ast, param):
+    def visitBreak(self, ast, given_scope: List[ScopeObject]):
+        # TODO: complete this. Use IsForLoopVisit.
         return None
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
@@ -590,11 +605,60 @@ class StaticChecker(BaseVisitor):
             if not self.compare_types(expr_type, current_function.resolved_return_type):
                 raise StaticError.TypeMismatch(ast)
 
-    def visitBinaryOp(self, ast, param):
-        return None
+    def visitBinaryOp(self, ast: AST.BinaryOp, given_scope: List[ScopeObject]):
+        lhs = self.visit(ast.left, given_scope)
+        rhs = self.visit(ast.right, given_scope)
+        if ast.op == "+":
+            if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
+                return AST.IntType()
+            elif (isinstance(lhs, AST.FloatType) or isinstance(lhs, AST.IntType)) and (
+                    isinstance(rhs, AST.FloatType) or isinstance(rhs, AST.IntType)):
+                return AST.FloatType()
+            elif isinstance(lhs, AST.StringType) and isinstance(rhs, AST.StringType):
+                return AST.StringType()
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif ast.op in ["-", "*", "/", "%"]:
+            if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
+                return AST.IntType()
+            elif (isinstance(lhs, AST.FloatType) or isinstance(lhs, AST.IntType)) and (
+                    isinstance(rhs, AST.FloatType) or isinstance(rhs, AST.IntType)):
+                return AST.FloatType()
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif ast.op in [">", "<", ">=", "<=", "==", "!="]:
+            if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
+                return AST.BoolType()
+            elif isinstance(lhs, AST.FloatType) and isinstance(rhs, AST.FloatType):
+                return AST.BoolType()
+            elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                return AST.BoolType()
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif ast.op in ["&&", "||"]:
+            if isinstance(lhs, AST.BoolType) and isinstance(rhs, AST.BoolType):
+                return AST.BoolType()
+            else:
+                raise StaticError.TypeMismatch(ast)
+        else:
+            raise StaticError.TypeMismatch(ast)
 
-    def visitUnaryOp(self, ast, param):
-        return None
+    def visitUnaryOp(self, ast: AST.UnaryOp, given_scope: List[ScopeObject]):
+        rhs = self.visit(ast.body, given_scope)
+        if ast.op == "!":
+            if isinstance(rhs, AST.BoolType):
+                return AST.BoolType()
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif ast.op == "-":
+            if isinstance(rhs, AST.IntType):
+                return AST.IntType()
+            elif isinstance(rhs, AST.FloatLiteral):
+                return AST.FloatType()
+            else:
+                raise StaticError.TypeMismatch(ast)
+        else:
+            raise StaticError.TypeMismatch(ast)
 
     def visitFuncCall(self, ast: AST.FuncCall, given_scope: List[ScopeObject]):
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
