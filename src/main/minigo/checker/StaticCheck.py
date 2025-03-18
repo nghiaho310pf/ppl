@@ -399,6 +399,10 @@ class StaticChecker(BaseVisitor):
                         raise StaticError.Redeclared(StaticError.Function(), thing.name)
                 # Recursion may be used so we'll append it to scope first before visiting.
                 my_scope.append(FunctionSymbol(thing.name, thing))
+
+                # Parameter type and return type resolution is done in visitFuncDecl.
+                # It's dirty but it works.
+
                 self.visit(thing, my_scope)
             elif isinstance(thing, AST.MethodDecl):
                 receiver_type = thing.recType
