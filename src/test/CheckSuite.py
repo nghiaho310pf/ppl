@@ -138,7 +138,6 @@ class CheckSuite(unittest.TestCase):
 
     def test_035(self):
         input = """
-
             type Point struct {
                 x float;
                 y float;
@@ -151,6 +150,21 @@ class CheckSuite(unittest.TestCase):
             func X() Point {
                 var a = Point{};
                 var x float = a.Length();
+            }
+        """
+        expect = ""
+        self.assertTrue(TestChecker.test(input, expect, 402))
+
+    def test_037(self):
+        input = """
+            type I struct {
+                i int;
+            }
+
+            func X() {
+                const a = I{i: 2};
+                const b = a.i;
+                var x = [b]int{2};
             }
         """
         expect = ""
