@@ -41,12 +41,15 @@ class StructSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.StructType):
         super().__init__(name)
         self.original_ast = original_ast
+        # TODO: add logic below to fill this out!
         self.method_resolved_types = dict[str, ResolvedFunctionTypes]()
 
 class InterfaceSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.InterfaceType):
         super().__init__(name)
         self.original_ast = original_ast
+        # TODO: add logic below to fill this out!
+        self.method_resolved_types = dict[str, ResolvedFunctionTypes]()
 
 class FunctionSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.FuncDecl):
@@ -788,12 +791,14 @@ class StaticChecker(BaseVisitor):
                         for method in sym.original_ast.methods:
                             if method.fun.name == ast.metName:
                                 # TODO: count arguments and check their receivers.
+                                # TODO: this is wrong; use resolved type.
                                 return method.fun.retType
                         raise StaticError.Undeclared(StaticError.Method(), ast.metName)
                     elif isinstance(sym, InterfaceSymbol):
                         for prototype in sym.original_ast.methods:
                             if prototype.name == ast.metName:
                                 # TODO: count arguments and check their receivers.
+                                # TODO: this is wrong; use resolved type.
                                 return prototype.retType
                         raise StaticError.Undeclared(StaticError.Method(), ast.metName)
                     else:
