@@ -6,32 +6,16 @@
 import AST
 from Visitor import *
 from typing import List
-# from Utils import Utils
 import StaticError
-# from functools import reduce
-
-# class MType:
-#     def __init__(self, partype, rettype):
-#         self.partype = partype
-#         self.rettype = rettype
-#
-#     def __str__(self):
-#         return "MType([" + ",".join(str(x) for x in self.partype) + "]," + str(self.rettype) + ")"
-#
-# class Symbol:
-#     def __init__(self,name,mtype,value = None):
-#         self.name = name
-#         self.mtype = mtype
-#         self.value = value
-#
-#     def __str__(self):
-#         return "Symbol(" + str(self.name) + "," + str(self.mtype) + ("" if self.value is None else "," + str(self.value)) + ")"
 
 # Just use classes, man.
+# For scope state.
 
 class ScopeObject:
     def __init__(self):
         pass
+
+# For name resolution.
 
 class Symbol(ScopeObject):
     def __init__(self, name: str):
@@ -67,31 +51,52 @@ class ConstantSymbol(Symbol):
         super().__init__(name)
         self.original_ast = original_ast
         self.resolved_type = None
+        self.resolved_value = None
 
     def set_type(self, new_type: AST.Type):
         self.resolved_type = new_type
+
+    def set_value(self, new_value: AST.Literal):
+        self.resolved_value = new_value
 
 class FunctionParameterSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.ParamDecl):
         super().__init__(name)
         self.original_ast = original_ast
 
-# Some state, who cares.
+# For banning illegal returns.
 
 class CurrentFunction(ScopeObject):
     def __init__(self, original_ast: AST.FuncDecl):
         super().__init__()
         self.original_ast = original_ast
 
-class IsExpressionVisit(ScopeObject):
+# Identifier resolution mode
+
+class IdResolutionMode(ScopeObject):
     def __init__(self):
         super().__init__()
 
-class IsTypenameVisit(ScopeObject):
+class IsExpressionVisit(IdResolutionMode):
     def __init__(self):
         super().__init__()
 
-# class StaticChecker(BaseVisitor,Utils):
+class IsTypenameVisit(IdResolutionMode):
+    def __init__(self):
+        super().__init__()
+
+# For banning function/method calls and references to non-consts.
+
+class IsComptimeExpressionVisit(ScopeObject):
+    def __init__(self):
+        super().__init__()
+
+# For banning breaks and continues outside of loops.
+
+class IsForLoopVisit(ScopeObject):
+    def __init__(self):
+        super().__init__()
+
 class StaticChecker(BaseVisitor):
     def __init__(self, root_ast):
         self.root_ast = root_ast
@@ -102,6 +107,208 @@ class StaticChecker(BaseVisitor):
         if isinstance(a, AST.Id) and isinstance(b, AST.Id):
             return a.name == b.name
         return type(a) == type(b)
+
+    # Just roll our own recursion here instead of using StaticChecker's cancerous visitor mechanism.
+    @staticmethod
+    def comptime_evaluate(ast: AST.Expr, given_scope: List[ScopeObject]):
+        if isinstance(ast, AST.Id):
+            for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+                if sym.name == ast.name:
+                    if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
+                        # I guess we don't allow bare-referring to structs and interfaces?
+                        # TODO: ask Phung about this.
+                        raise StaticError.TypeMismatch(ast)
+                    elif isinstance(sym, FunctionSymbol):
+                        # I guess we don't allow bare-referring to functions?
+                        # TODO: ask Phung about this.
+                        raise StaticError.TypeMismatch(ast)
+                    elif isinstance(sym, ConstantSymbol):
+                        return sym.resolved_value
+                    elif isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
+                        # Referencing other variables/parameters isn't allowed in constants.
+                        # TODO: ask Phung about what error to raise here.
+                        raise StaticError.TypeMismatch(ast)
+                    else:
+                        # TODO: raise an unreachable case being reached.
+                        return None
+            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+        elif isinstance(ast, AST.FuncCall) or isinstance(ast, AST.MethCall):
+            # Function calls are not allowed at compilation-time evaluation.
+            raise StaticError.TypeMismatch(ast)
+        elif isinstance(ast, AST.ArrayCell):
+            # I guess we need to evaluate the entire thing.
+            receiver = StaticChecker.comptime_evaluate(ast.arr, given_scope)
+            if not isinstance(receiver, AST.ArrayLiteral):
+                raise StaticError.TypeMismatch(ast)
+
+            inner: AST.NestedList = receiver.value
+            resulting_dimens = receiver.dimens
+
+            for it in ast.idx:
+                if not isinstance(inner, list):
+                    raise StaticError.TypeMismatch(ast)
+                e = StaticChecker.comptime_evaluate(it, given_scope)
+                if not isinstance(e, AST.IntLiteral):
+                    raise StaticError.TypeMismatch(ast)
+                if e.value < 0 or e.value >= len(inner):
+                    # TODO: ???!!! Should already be caught by static checking?
+                    raise StaticError.TypeMismatch(ast)
+                inner = inner[e.value]
+                resulting_dimens = resulting_dimens[:-1]
+
+            if isinstance(inner, list):
+                return AST.ArrayLiteral(resulting_dimens, receiver.eleType, inner)
+        elif isinstance(ast, AST.FieldAccess):
+            # I guess we need to evaluate the entire thing.
+            receiver = StaticChecker.comptime_evaluate(ast.receiver, given_scope)
+            field = ast.field
+            if not isinstance(receiver, AST.StructLiteral):
+                raise StaticError.TypeMismatch(ast)
+
+            # Resolve the type.
+            for maybe_struct in filter(lambda s: isinstance(s, Symbol), given_scope):
+                if isinstance(maybe_struct, StructSymbol):
+                    struct_found = False
+                    if maybe_struct.name == receiver.name:
+                        q: AST.Expr = next(filter(lambda t: t[0] == field, receiver.elements))
+                        return StaticChecker.comptime_evaluate(q, given_scope)
+                    if not struct_found:
+                        # This should never happen since we do static checking by visitor pattern first before
+                        # actually evaluating the thing.
+                        # Original comment: "TODO: this is probably correct but I should ask Phung just to be sure."
+                        raise StaticError.Undeclared(StaticError.Type(), receiver.name)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+        elif isinstance(ast, AST.BinaryOp):
+            lhs = StaticChecker.comptime_evaluate(ast.left, given_scope)
+            rhs = StaticChecker.comptime_evaluate(ast.right, given_scope)
+            if ast.op == "+":
+                if isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
+                elif isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value + rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) + float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "-":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value - rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) - float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "*":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value * rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) * float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "/":
+                # TODO: what if RHS is zero? Ask Phung.
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(int(lhs.value / rhs.value))
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) / float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "%":
+                # TODO: what if RHS is zero? Ask Phung.
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value % rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) / float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == ">":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value > rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value > rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value > rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "<":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value < rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value < rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value < rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == ">=":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value >= rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value >= rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value >= rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "<=":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value <= rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value <= rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value <= rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "==":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value == rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value == rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value == rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "!=":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value != rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value != rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value != rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "&&":
+                if isinstance(lhs, AST.BooleanLiteral) and isinstance(rhs, AST.BooleanLiteral):
+                    return AST.BooleanLiteral(lhs.value and rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "||":
+                if isinstance(lhs, AST.BooleanLiteral) and isinstance(rhs, AST.BooleanLiteral):
+                    return AST.BooleanLiteral(lhs.value or rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif isinstance(ast, AST.UnaryOp):
+            rhs = StaticChecker.comptime_evaluate(ast.body, given_scope)
+            if ast.op == "!":
+                if isinstance(rhs, AST.BooleanLiteral):
+                    return AST.BooleanLiteral(not rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "-":
+                if isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(- rhs.value)
+                elif isinstance(rhs, AST.FloatLiteral):
+                    return AST.FloatLiteral(-rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            else:
+                raise StaticError.TypeMismatch(ast)
+        else:
+            return ast
 
     def check(self):
         # TODO: there are pre-defined global methods; add them here.
@@ -135,18 +342,21 @@ class StaticChecker(BaseVisitor):
                 if type(thing.recType) is not AST.Id:
                     raise StaticError.TypeMismatch(thing) # TODO: do something about this?
                 receiver_type_id: AST.Id = thing.recType # downcast so the IDE actually shuts up about it
-                struct_found = False
-                for struct in filter(lambda s: isinstance(s, StructSymbol), scope):
-                    if struct.name == receiver_type_id.name:
-                        for existing_method in struct.original_ast.methods:
-                            if existing_method.fun.name == thing.fun.name:
-                                raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
-                        struct.original_ast.methods.append(thing)
-                        struct_found = True
-                        break
-                if not struct_found:
-                    # TODO: this is probably correct but I should ask Phung just to be sure.
-                    raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
+                for maybe_struct in filter(lambda s: isinstance(s, Symbol), scope):
+                    if isinstance(maybe_struct, StructSymbol):
+                        struct_found = False
+                        if maybe_struct.name == receiver_type_id.name:
+                            for existing_method in maybe_struct.original_ast.methods:
+                                if existing_method.fun.name == thing.fun.name:
+                                    raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
+                            maybe_struct.original_ast.methods.append(thing)
+                            struct_found = True
+                            break
+                        if not struct_found:
+                            # TODO: this is probably correct but I should ask Phung just to be sure.
+                            raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
+                    else:
+                        raise StaticError.TypeMismatch(thing)
                 # Recursion may be used so it's added to the struct first above.
                 self.visit(thing, scope)
             elif isinstance(thing, AST.VarDecl):
@@ -162,8 +372,10 @@ class StaticChecker(BaseVisitor):
                     if thing.conName == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Variable(), thing.conName)
                 resolved_type = self.visit(thing, scope)
+                resolved_value = self.comptime_evaluate(thing.iniExpr, scope) if (thing.iniExpr is not None) else None
                 sym = ConstantSymbol(thing.conName, thing)
                 sym.set_type(resolved_type)
+                sym.set_value(resolved_value)
                 scope.append(sym)
 
         # TODO: do we return anything? Ask Phung.
@@ -172,8 +384,8 @@ class StaticChecker(BaseVisitor):
         # We don't check name dupes; that's done by the outer layer.
         # Instead, we only visit the inner expression and check for type mismatches.
 
-        explicit_type: AST.Type | None = self.visit(ast.varType, given_scope + [IsTypenameVisit()]) if ast.varType is not None else None
-        implicit_type: AST.Type | None = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if ast.varInit is not None else None
+        explicit_type: AST.Type | None = self.visit(ast.varType, given_scope + [IsTypenameVisit()]) if (ast.varType is not None) else None
+        implicit_type: AST.Type | None = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if (ast.varInit is not None) else None
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
@@ -184,8 +396,8 @@ class StaticChecker(BaseVisitor):
 
     def visitConstDecl(self, ast: AST.ConstDecl, given_scope: List[ScopeObject]):
         # We don't check name dupes here either; that's done by the outer layer.
-        explicit_type: AST.Type | None = self.visit(ast.conType, given_scope + [IsTypenameVisit()]) if ast.conType is not None else None
-        implicit_type: AST.Type | None = self.visit(ast.iniExpr, given_scope + [IsExpressionVisit()]) if ast.iniExpr is not None else None
+        explicit_type: AST.Type | None = self.visit(ast.conType, given_scope + [IsTypenameVisit()]) if (ast.conType is not None) else None
+        implicit_type: AST.Type | None = self.visit(ast.iniExpr, given_scope + [IsComptimeExpressionVisit(), IsExpressionVisit()]) if (ast.iniExpr is not None) else None
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
@@ -206,10 +418,7 @@ class StaticChecker(BaseVisitor):
             self.visit(param.parType, scope + [IsTypenameVisit()])
             scope.append(FunctionParameterSymbol(param.parName, param))
 
-        # Now check the return type.
         self.visit(ast.retType, scope + [IsTypenameVisit()])
-
-        # Everything is done now; we can visit the inner block.
         self.visit(ast.body, scope)
 
     def visitMethodDecl(self, ast, param):
@@ -264,7 +473,9 @@ class StaticChecker(BaseVisitor):
 
                 sym = ConstantSymbol(statement.conName, statement)
                 resolved_type = self.visit(statement, scope)
+                resolved_value = self.comptime_evaluate(statement.iniExpr, scope) if (statement.iniExpr is not None) else None
                 sym.set_type(resolved_type)
+                sym.set_value(resolved_value)
                 scope.append(sym)
             else:
                 # This is probably a statement/expression.
@@ -314,10 +525,21 @@ class StaticChecker(BaseVisitor):
     def visitUnaryOp(self, ast, param):
         return None
 
-    def visitFuncCall(self, ast, param):
-        return None
+    def visitFuncCall(self, ast: AST.FuncCall, given_scope: List[ScopeObject]):
+        for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+            if sym.name == ast.funName:
+                if isinstance(sym, FunctionSymbol):
+                    # Referencing other variables isn't allowed in constants.
+                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope))) is not None:
+                        # TODO: ask Phung about what error to raise here.
+                        raise StaticError.TypeMismatch(ast)
+                    return sym.original_ast.retType
+                else:
+                    raise StaticError.TypeMismatch(ast)
+        raise StaticError.Undeclared(StaticError.Function(), ast.funName)
 
     def visitMethCall(self, ast: AST.MethCall, given_scope: List[ScopeObject]):
+        # TODO: is adding an IsExpressionVisit instance here even necessary?
         receiver_type = self.visit(ast.receiver, given_scope + [IsExpressionVisit()])
         if isinstance(receiver_type, AST.Id):
             # Resolve the type (again)
@@ -363,8 +585,16 @@ class StaticChecker(BaseVisitor):
                 elif isinstance(sym, ConstantSymbol):
                     return sym.resolved_type
                 elif isinstance(sym, VariableSymbol):
+                    # Referencing other variables isn't allowed in constants.
+                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope))) is not None:
+                        # TODO: ask Phung about what error to raise here.
+                        raise StaticError.TypeMismatch(ast)
                     return sym.resolved_type
                 elif isinstance(sym, FunctionParameterSymbol):
+                    # Referencing function parameters isn't allowed in constants.
+                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope))) is not None:
+                        # TODO: ask Phung about what error to raise here.
+                        raise StaticError.TypeMismatch(ast)
                     return sym.original_ast.parType
                 else:
                     return None
