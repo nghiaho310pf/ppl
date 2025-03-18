@@ -430,6 +430,7 @@ class StaticChecker(BaseVisitor):
         # We don't check name dupes here either; that's done by the outer layer.
         explicit_type: AST.Type | None = self.visit(ast.conType, given_scope + [IsTypenameVisit()]) if (ast.conType is not None) else None
         implicit_type: AST.Type | None = self.visit(ast.iniExpr, given_scope + [IsComptimeExpressionVisit(), IsExpressionVisit()]) if (ast.iniExpr is not None) else None
+
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
@@ -456,36 +457,38 @@ class StaticChecker(BaseVisitor):
         self.visit(ast.body, scope)
 
     def visitMethodDecl(self, ast, param):
+        # TODO: complete this.
         return None
 
     def visitPrototype(self, ast, param):
+        # TODO: complete this.
         return None
 
     def visitIntType(self, ast, param):
-        return ast
+        return ast # Intentional.
 
     def visitFloatType(self, ast, param):
-        return ast
+        return ast # Intentional.
 
     def visitBoolType(self, ast, param):
-        return ast
+        return ast # Intentional.
 
     def visitStringType(self, ast, param):
-        return ast
+        return ast # Intentional.
 
     def visitVoidType(self, ast, param):
-        return ast
+        return ast # Intentional.
 
     def visitArrayType(self, ast: AST.ArrayType, given_scope: List[ScopeObject]):
         # Evaluate indices so we can type-check.
         return AST.ArrayType([self.comptime_evaluate(it, given_scope) for it in ast.dimens], ast.eleType)
 
     def visitStructType(self, ast, param):
-        # TODO: throw a debug exception here.
+        # TODO: complete this.
         return None
 
     def visitInterfaceType(self, ast, param):
-        # TODO: throw a debug exception here.
+        # TODO: complete this.
         return None
 
     def visitBlock(self, ast: AST.Block, given_scope: List[ScopeObject]):
@@ -529,7 +532,6 @@ class StaticChecker(BaseVisitor):
                     # TODO: should VariableSymbol's 2nd argument type accept assignment statement ASTs too?
                     sym = VariableSymbol(lhs.name, statement)
 
-                    implicit_type: AST.Type | None = None
                     try:
                         implicit_type = self.visit(statement.rhs, scope + [IsExpressionVisit()])
                     except StaticError.Undeclared as e:
@@ -550,6 +552,7 @@ class StaticChecker(BaseVisitor):
                 self.visit(statement, scope)
 
     def visitAssign(self, ast, param):
+
         return None
 
     def visitIf(self, ast, param):
