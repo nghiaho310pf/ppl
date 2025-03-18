@@ -36,14 +36,25 @@ class CheckSuite(unittest.TestCase):
     #     """
     #     expect = "Type Mismatch: VarDecl(x,IntType,MethodCall(Id(a),Length,[]))\n"
     #     self.assertTrue(TestChecker.test(input,expect,402))
+    #
+    # def test_2(self):
+    #     input = """
+    #         const q = 1 + 2
+    #
+    #         func thing1() [q]int {
+    #             return [3]int{0, 1, 2};
+    #         }
+    #     """
+    #     expect = ""
+    #     self.assertTrue(TestChecker.test(input, expect, 402))
 
-    def test_2(self):
+    def test_3(self):
         input = """
-            const q = 1 + 2
-        
+            const q = 1 + 3
+
             func thing1() [q]int {
                 return [3]int{0, 1, 2};
             }
         """
-        expect = "Undeclared Method: Length2\n"
+        expect = "Type Mismatch: Return(ArrayLiteral([IntLiteral(3)],IntType,[IntLiteral(0),IntLiteral(1),IntLiteral(2)]))\n"
         self.assertTrue(TestChecker.test(input, expect, 402))

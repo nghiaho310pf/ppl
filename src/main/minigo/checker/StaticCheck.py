@@ -116,6 +116,11 @@ class StaticChecker(BaseVisitor):
             for i, dim in enumerate(a.dimens):
                 if not isinstance(dim, AST.IntLiteral):
                     return False
+                other_dim = b.dimens[i]
+                if not isinstance(other_dim, AST.IntLiteral):
+                    return False
+                if dim.value != other_dim.value:
+                    return False
         return type(a) == type(b)
 
     # Just roll our own recursion here instead of using StaticChecker's cancerous visitor mechanism.
