@@ -354,7 +354,11 @@ class StaticChecker(BaseVisitor):
     def check_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: list[AST.IntLiteral], given_scope: list[ScopeObject]):
         if not isinstance(ast, list):
             raise StaticError.TypeMismatch(ast)
-        if len(ast) != dimens[0].value:
+        this_dimen = dimens[0]
+        if not isinstance(this_dimen, AST.IntLiteral):
+            # TODO: should this be raised here or upstream?
+            raise StaticError.TypeMismatch(original_ast)
+        if len(ast) != this_dimen.value:
             # TODO: what to raise here? Ask Phung.
             raise StaticError.TypeMismatch(original_ast)
         if len(dimens) > 1:
