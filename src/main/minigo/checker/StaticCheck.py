@@ -180,7 +180,9 @@ class StaticChecker(BaseVisitor):
                 if isinstance(maybe_struct, StructSymbol):
                     struct_found = False
                     if maybe_struct.name == receiver.name:
-                        q: AST.Expr = next(filter(lambda t: t[0] == field, receiver.elements))
+                        q: AST.Expr | None = next(filter(lambda t: t[0] == field, receiver.elements), None)
+                        if q is None:
+                            raise StaticError.Undeclared(StaticError.Field(), field)
                         return StaticChecker.comptime_evaluate(q, given_scope)
                     if not struct_found:
                         # This should never happen since we do static checking by visitor pattern first before
@@ -320,6 +322,21 @@ class StaticChecker(BaseVisitor):
         else:
             return ast
 
+    def checkNestedList(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: list[AST.IntLiteral], given_scope: list[ScopeObject]):
+        if not isinstance(ast, list):
+            raise StaticError.TypeMismatch(ast)
+        if len(ast) != dimens[0].value:
+            # TODO: what to raise here? Ask Phung.
+            raise StaticError.TypeMismatch(original_ast)
+        if len(dimens) > 1:
+            for sublist in ast:
+                self.checkNestedList(original_ast, sublist, ele_type, dimens[1:])
+        else:
+            for ele in ast:
+                this_ele_type = self.visit(ele, given_scope)
+                if not self.compare_types(this_ele_type, ele_type):
+                    raise StaticError.TypeMismatch(ele)
+
     def check(self):
         # TODO: there are pre-defined global methods; add them here.
         return self.visit(self.root_ast, [])
@@ -359,11 +376,10 @@ class StaticChecker(BaseVisitor):
                             for existing_method in maybe_struct.original_ast.methods:
                                 if existing_method.fun.name == thing.fun.name:
                                     raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
-                                maybe_struct.original_ast.methods.append(thing)
-                                struct_found = True
-                                break
+                            maybe_struct.original_ast.methods.append(thing)
+                            struct_found = True
+                            break
                         else:
-                            print(maybe_struct.original_ast.name)
                             raise StaticError.TypeMismatch(thing)
                 if not struct_found:
                     # TODO: this is probably correct but I should ask Phung just to be sure.
@@ -501,7 +517,7 @@ class StaticChecker(BaseVisitor):
             elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
-                existing_maybe_variable = next(filter(lambda x: x.name == lhs.name, reversed(scope)))
+                existing_maybe_variable = next(filter(lambda x: x.name == lhs.name, reversed(scope)), None)
                 if existing_maybe_variable is None:
                     this_block_names.append(lhs.name)
 
@@ -551,7 +567,7 @@ class StaticChecker(BaseVisitor):
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
         # Are we in a return?
-        current_function: CurrentFunction | None = next(filter(lambda x: isinstance(x, CurrentFunction), reversed(given_scope)))
+        current_function: CurrentFunction | None = next(filter(lambda x: isinstance(x, CurrentFunction), reversed(given_scope)), None)
         if current_function is None:
             # TODO: what to raise here?
             raise StaticError.Undeclared(StaticError.Function(), "(no function)")
@@ -577,7 +593,7 @@ class StaticChecker(BaseVisitor):
             if sym.name == ast.funName:
                 if isinstance(sym, FunctionSymbol):
                     # Referencing other variables isn't allowed in constants.
-                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope))) is not None:
+                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
                         # TODO: ask Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
                     return sym.original_ast.retType
@@ -615,7 +631,7 @@ class StaticChecker(BaseVisitor):
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
             if sym.name == ast.name:
                 if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
-                    id_mode: IsTypenameVisit | IsExpressionVisit | None = next(filter(lambda x: isinstance(x, IsTypenameVisit) or isinstance(x, IsExpressionVisit), reversed(given_scope)))
+                    id_mode: IsTypenameVisit | IsExpressionVisit | None = next(filter(lambda x: isinstance(x, IsTypenameVisit) or isinstance(x, IsExpressionVisit), reversed(given_scope)), None)
                     if isinstance(id_mode, IsTypenameVisit):
                         return ast
                     elif isinstance(id_mode, IsExpressionVisit):
@@ -633,13 +649,13 @@ class StaticChecker(BaseVisitor):
                     return sym.resolved_type
                 elif isinstance(sym, VariableSymbol):
                     # Referencing other variables isn't allowed in constants.
-                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope))) is not None:
+                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
                         # TODO: ask Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
                     return sym.resolved_type
                 elif isinstance(sym, FunctionParameterSymbol):
                     # Referencing function parameters isn't allowed in constants.
-                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope))) is not None:
+                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
                         # TODO: ask Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
                     return sym.original_ast.parType
@@ -678,9 +694,12 @@ class StaticChecker(BaseVisitor):
     def visitStringLiteral(self, ast, param):
         return AST.StringType()
 
-    def visitArrayLiteral(self, ast: AST.ArrayLiteral, scope: List[ScopeObject]):
-        # TODO: check lengths, array type and element type.
-        return
+    def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[ScopeObject]):
+        dimens = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
+        ele_type = self.visit(ast.eleType, given_scope)
+        self.checkNestedList(ast, ast.value, ele_type, dimens, given_scope)
+        # TODO: maybe assert ele_type and ast.eleType are the exact same
+        return AST.ArrayType(dimens, ele_type)
 
     def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[ScopeObject]):
         # Find the struct name.

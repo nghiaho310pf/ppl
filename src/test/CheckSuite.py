@@ -18,48 +18,32 @@ class CheckSuite(unittest.TestCase):
     #     expect = "Undeclared Identifier: b\n"
     #     self.assertTrue(TestChecker.test(input,expect,402))
 
-    def test_1(self):
-        input = """
-            func sqrt(v float) float {
-                return 1.0;
-            }
-        
-            type Point struct {
-                x float;
-                y float;
-            }
-            
-            func (p Point) Length() float {
-                return sqrt(x * x + y * y);
-            }
-        
-            func X() Point {
-                var a = Point{};
-                var x int = a.Length();
-            }
-        """
-        expect = "Type Mismatch: VarDecl(x,IntType,MethodCall(Id(a),Length,[]))\n"
-        self.assertTrue(TestChecker.test(input,expect,402))
-
-    # def test_2(self):
+    # def test_1(self):
     #     input = """
-    #         func sqrt(v float) float {
-    #             return 1.0;
-    #         }
-    #
     #         type Point struct {
     #             x float;
     #             y float;
     #         }
     #
     #         func (p Point) Length() float {
-    #             return sqrt(x * x + y * y);
+    #             return 1.0;
     #         }
     #
     #         func X() Point {
     #             var a = Point{};
-    #             var x = a.Length2();
+    #             var x int = a.Length();
     #         }
     #     """
-    #     expect = "Undeclared Method: Length2\n"
-    #     self.assertTrue(TestChecker.test(input, expect, 402))
+    #     expect = "Type Mismatch: VarDecl(x,IntType,MethodCall(Id(a),Length,[]))\n"
+    #     self.assertTrue(TestChecker.test(input,expect,402))
+
+    def test_2(self):
+        input = """
+            const q = 1 + 2
+        
+            func thing1() [q]int {
+                return [3]int{0, 1, 2};
+            }
+        """
+        expect = "Undeclared Method: Length2\n"
+        self.assertTrue(TestChecker.test(input, expect, 402))
