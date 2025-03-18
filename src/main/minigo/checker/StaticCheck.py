@@ -77,8 +77,9 @@ class ConstantSymbol(Symbol):
         self.resolved_value = new_value
 
 class FunctionParameterSymbol(Symbol):
-    def __init__(self, name: str, original_ast: AST.ParamDecl, resolved_type: AST.Type):
+    def __init__(self, name: str, original_ast: AST.ParamDecl | AST.Id, resolved_type: AST.Type):
         super().__init__(name)
+        # original_ast can be an AST.Id because it could be a receiver of a method.
         self.original_ast = original_ast
         self.resolved_type = resolved_type
 
@@ -88,6 +89,15 @@ class CurrentFunction(ScopeObject):
     def __init__(self, resolved_types: ResolvedFunctionTypes):
         super().__init__()
         self.resolved_types = resolved_types
+
+# Cheap hack for resolving types for methods.
+
+class CurrentMethod(ScopeObject):
+    def __init__(self, name: str):
+        super().__init__()
+        self.resolved_types = ResolvedFunctionTypes()
+        # Only used for a sanity check.
+        self.name = name
 
 # Identifier resolution mode
 
@@ -349,7 +359,7 @@ class StaticChecker(BaseVisitor):
             raise StaticError.TypeMismatch(original_ast)
         if len(dimens) > 1:
             for sublist in ast:
-                self.check_nested_list(original_ast, sublist, ele_type, dimens[1:])
+                self.check_nested_list(original_ast, sublist, ele_type, dimens[1:], given_scope)
         else:
             for ele in ast:
                 this_ele_type = self.visit(ele, given_scope)
@@ -380,23 +390,20 @@ class StaticChecker(BaseVisitor):
                 for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Function(), thing.name)
-
-                # Resolve its return type and parameter types before letting it appear in scope.
-                sym = FunctionSymbol(thing.name, thing)
-                sym.resolved_types.set_return_type(self.visit(thing.retType, my_scope + [IsTypenameVisit()]))
-                sym.resolved_types.set_parameter_types([self.visit(it.parType, my_scope + [IsTypenameVisit()]) for it in thing.params])
-
                 # Recursion may be used so we'll append it to scope first before visiting.
-                my_scope.append(sym)
+                my_scope.append(FunctionSymbol(thing.name, thing))
                 self.visit(thing, my_scope)
             elif isinstance(thing, AST.MethodDecl):
+                receiver_type = thing.recType
+
                 # Preventative hack-fix for ASTGeneration.py/AST.py flaw.
-                if type(thing.recType) is not AST.Id:
-                    raise StaticError.TypeMismatch(thing) # TODO: do something about this?
-                receiver_type_id: AST.Id = thing.recType # downcast so the IDE actually shuts up about it
+                if not isinstance(receiver_type, AST.Id):
+                    # TODO: do something about this?
+                    raise StaticError.TypeMismatch(thing)
+
                 struct_found = False
                 for maybe_struct in filter(lambda s: isinstance(s, Symbol), my_scope):
-                    if maybe_struct.name == receiver_type_id.name:
+                    if maybe_struct.name == receiver_type.name:
                         if isinstance(maybe_struct, StructSymbol):
                             for existing_method in maybe_struct.original_ast.methods:
                                 if existing_method.fun.name == thing.fun.name:
@@ -404,16 +411,18 @@ class StaticChecker(BaseVisitor):
                             maybe_struct.original_ast.methods.append(thing)
                             struct_found = True
 
-                            # Parameter type resolution is done in visitFuncDecl. It's dirty but it works.
+                            # Parameter type and return type resolution is done in visitFuncDecl.
+                            # It's dirty but it works.
 
                             break
                         else:
                             raise StaticError.TypeMismatch(thing)
                 if not struct_found:
                     # TODO: this is probably correct but I should ask Phung just to be sure.
-                    raise StaticError.Undeclared(StaticError.Type(), receiver_type_id.name)
+                    raise StaticError.Undeclared(StaticError.Type(), receiver_type.name)
                 # Recursion may be used so it's added to the struct first above.
-                self.visit(thing, my_scope)
+                meth_obj = CurrentMethod(thing.fun.name)
+                self.visit(thing, my_scope + [meth_obj])
             elif isinstance(thing, AST.VarDecl):
                 for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.varName == existing_symbol.name:
@@ -467,13 +476,14 @@ class StaticChecker(BaseVisitor):
         if len(given_scope) < 1:
             # !!??!!!??
             raise StaticError.TypeMismatch(ast)
-        self_sym = given_scope[-1]
-        if (not isinstance(self_sym, FunctionSymbol)) or self_sym.name != ast.name:
-            # Sanity check failed !!??!!!??
-            raise StaticError.TypeMismatch(ast)
 
-        current_function_scope_object = CurrentFunction(self_sym.resolved_types)
-        my_scope = given_scope + [current_function_scope_object]
+        self_sym = given_scope[-1]
+        # Sanity checks.
+        if not isinstance(self_sym, FunctionSymbol):
+            raise StaticError.TypeMismatch(ast)
+        if self_sym.name != ast.name:
+            raise StaticError.TypeMismatch(ast)
+        my_scope = given_scope.copy()
 
         # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces
         # and functions.
@@ -486,12 +496,43 @@ class StaticChecker(BaseVisitor):
             param_types.append(resolved_param_type)
             my_scope.append(FunctionParameterSymbol(param.parName, param, resolved_param_type))
         self_sym.resolved_types.set_parameter_types(param_types)
+        self_sym.resolved_types.set_return_type(self.visit(ast.retType, my_scope + [IsTypenameVisit()]))
 
-        self.visit(ast.body, my_scope)
+        current_function_scope_object = CurrentFunction(self_sym.resolved_types)
+        self.visit(ast.body, my_scope + [current_function_scope_object])
 
-    def visitMethodDecl(self, ast, param):
-        # TODO: complete this.
-        return None
+    def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[ScopeObject]):
+        # This might be the 2nd ugliest part of the entire file to be quite honest.
+        if len(given_scope) < 1:
+            # !!??!!!??
+            raise StaticError.TypeMismatch(ast)
+
+        self_sym = given_scope[-1]
+        # Sanity checks.
+        if not isinstance(self_sym, CurrentMethod):
+            raise StaticError.TypeMismatch(ast)
+        if self_sym.name != ast.fun.name:
+            raise StaticError.TypeMismatch(ast)
+
+        # I guess treating the receiver as a parameter symbol is fine for now. It shouldn't interfere with the stuff
+        # below which is almost straight-copied from visitFuncDecl.
+        my_scope = given_scope + [FunctionParameterSymbol(ast.receiver, AST.Id(ast), ast.recType)]
+
+        # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces
+        # and functions.
+        param_types = []
+        for param in ast.fun.params:
+            for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), my_scope):
+                if existing_param.name == param.parName:
+                    raise StaticError.Redeclared(StaticError.Parameter(), param.parName)
+            resolved_param_type = self.visit(param.parType, my_scope + [IsTypenameVisit()])
+            param_types.append(resolved_param_type)
+            my_scope.append(FunctionParameterSymbol(param.parName, param, resolved_param_type))
+        self_sym.resolved_types.set_parameter_types(param_types)
+        self_sym.resolved_types.set_return_type(ast.fun.retType)
+
+        current_function_scope_object = CurrentFunction(self_sym.resolved_types)
+        self.visit(ast.fun.body, my_scope + [current_function_scope_object])
 
     def visitPrototype(self, ast, param):
         # TODO: complete this.
