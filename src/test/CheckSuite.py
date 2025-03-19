@@ -150,6 +150,7 @@ class CheckSuite(unittest.TestCase):
             func X() Point {
                 var a = Point{};
                 var x float = a.Length();
+                return a
             }
         """
         expect = ""
@@ -164,7 +165,7 @@ class CheckSuite(unittest.TestCase):
             func X() {
                 const a = I{i: 2};
                 const b = a.i;
-                var x = [b]int{2};
+                var x = [b]int{2, 3};
             }
         """
         expect = ""

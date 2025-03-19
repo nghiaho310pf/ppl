@@ -5,7 +5,7 @@
 
 import AST
 from Visitor import *
-from typing import List
+from typing import List, Tuple
 import StaticError
 
 # Just use classes, man.
@@ -41,15 +41,14 @@ class StructSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.StructType):
         super().__init__(name)
         self.original_ast = original_ast
-        # TODO: add logic below to fill this out!
-        self.method_resolved_types = dict[str, ResolvedFunctionTypes]()
+        self.resolved_field_types = dict[str, AST.Type]
+        self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
 
 class InterfaceSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.InterfaceType):
         super().__init__(name)
         self.original_ast = original_ast
-        # TODO: add logic below to fill this out!
-        self.method_resolved_types = dict[str, ResolvedFunctionTypes]()
+        self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
 
 class FunctionSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.FuncDecl):
@@ -82,7 +81,7 @@ class ConstantSymbol(Symbol):
 class FunctionParameterSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.ParamDecl | AST.Id, resolved_type: AST.Type):
         super().__init__(name)
-        # original_ast can be an AST.Id because it could be a receiver of a method.
+        # original_ast can be an identifier because it could be a receiver of a method.
         self.original_ast = original_ast
         self.resolved_type = resolved_type
 
@@ -124,21 +123,36 @@ class IsComptimeExpressionVisit(ScopeObject):
 
 # For banning breaks and continues outside of loops.
 
-class IsForLoopVisit(ScopeObject):
+class IsLoopVisit(ScopeObject):
     def __init__(self):
         super().__init__()
+
+# For making sure returns are in place in a function with a return type.
+
+class ReturnBeacon(ScopeObject):
+    def __init__(self):
+        super().__init__()
+        self.has_return = False
+
+    def set_has_return(self):
+        self.has_return = True
+
+# Special nil type.
+
+class NilType:
+    def __init__(self):
+        pass
 
 class StaticChecker(BaseVisitor):
     def __init__(self, root_ast):
         self.root_ast = root_ast
 
-    # TODO: Ask Phung about casting from struct vals to opaque interface vals.
     @staticmethod
-    def compare_types(a: AST.Type, b: AST.Type):
+    def hard_compare_types(a: AST.Type, b: AST.Type):
         if isinstance(a, AST.Id) and isinstance(b, AST.Id):
             return a.name == b.name
         if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
-            if (not StaticChecker.compare_types(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
+            if (not StaticChecker.hard_compare_types(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
                 return False
             for i, dim in enumerate(a.dimens):
                 if not isinstance(dim, AST.IntLiteral):
@@ -148,6 +162,57 @@ class StaticChecker(BaseVisitor):
                     return False
                 if dim.value != other_dim.value:
                     return False
+        return type(a) == type(b)
+
+    @staticmethod
+    def can_cast_a_to_b(a: AST.Type, b: AST.Type, given_scope: List[ScopeObject]):
+        # Allow going from nils to struct/interface instances.
+        if isinstance(a, NilType) and isinstance(b, AST.Id):
+            return True
+
+        # Allow structs to be cast to interfaces.
+        if isinstance(a, AST.Id) and isinstance(b, AST.Id):
+            a_id: AST.Id = a
+            b_id: AST.Id = b
+            if a_id.name == b_id.name:
+                return True
+            maybe_source_struct: StructSymbol | None = next(filter(lambda x: isinstance(x, StructSymbol) and (x.name == a_id.name), reversed(given_scope)), None)
+            maybe_target_interface: InterfaceSymbol | None = next(filter(lambda x: isinstance(x, InterfaceSymbol) and (x.name == b_id.name), reversed(given_scope)), None)
+
+            if (maybe_source_struct is None) or (maybe_target_interface is None):
+                return False
+
+            has_mismatched_method = False
+            for interface_method_name, resolved_interface_method_types in maybe_target_interface.resolved_method_types.items():
+                matches = False
+                for struct_method_name, resolved_struct_method_types in maybe_source_struct.resolved_method_types.items():
+                    if interface_method_name == struct_method_name:
+                        return_type_matches = StaticChecker.hard_compare_types(resolved_struct_method_types.return_type, resolved_interface_method_types.return_type)
+                        param_types_match = len(resolved_struct_method_types.parameter_types) == len(resolved_interface_method_types.parameter_types)
+                        if param_types_match:
+                            for i, t in enumerate(resolved_struct_method_types.parameter_types):
+                                if not StaticChecker.hard_compare_types(t, resolved_interface_method_types.parameter_types[i]):
+                                    param_types_match = False
+                                    break
+
+                        matches = return_type_matches and param_types_match
+                if not matches:
+                    has_mismatched_method = True
+
+            return not has_mismatched_method
+
+        if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
+            if (not StaticChecker.hard_compare_types(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
+                return False
+            for i, dim in enumerate(a.dimens):
+                if not isinstance(dim, AST.IntLiteral):
+                    return False
+                other_dim = b.dimens[i]
+                if not isinstance(other_dim, AST.IntLiteral):
+                    return False
+                if dim.value != other_dim.value:
+                    return False
+
         return type(a) == type(b)
 
     # Just roll our own recursion here instead of using StaticChecker's cancerous visitor mechanism.
@@ -212,10 +277,10 @@ class StaticChecker(BaseVisitor):
                 if isinstance(maybe_struct, StructSymbol):
                     struct_found = False
                     if maybe_struct.name == receiver.name:
-                        q: AST.Expr | None = next(filter(lambda t: t[0] == field, receiver.elements), None)
+                        q: Tuple[str, AST.Expr] | None = next(filter(lambda t: t[0] == field, receiver.elements), None)
                         if q is None:
                             raise StaticError.Undeclared(StaticError.Field(), field)
-                        return StaticChecker.comptime_evaluate(q, given_scope)
+                        return StaticChecker.comptime_evaluate(q[1], given_scope)
                     if not struct_found:
                         # This should never happen since we do static checking by visitor pattern first before
                         # actually evaluating the thing.
@@ -351,9 +416,8 @@ class StaticChecker(BaseVisitor):
                     raise StaticError.TypeMismatch(ast)
             else:
                 raise StaticError.TypeMismatch(ast)
-        # TODO: missing ArrayLiteral, StructLiteral.
         else:
-            # Probably NilLiteral.
+            # Probably NilLiteral, ArrayLiteral or StructLiteral.
             return ast
 
     def check_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: list[AST.IntLiteral], given_scope: list[ScopeObject]):
@@ -361,7 +425,6 @@ class StaticChecker(BaseVisitor):
             raise StaticError.TypeMismatch(ast)
         this_dimen = dimens[0]
         if not isinstance(this_dimen, AST.IntLiteral):
-            print(this_dimen)
             # TODO: should this be raised here or upstream?
             raise StaticError.TypeMismatch(original_ast)
         if len(ast) != this_dimen.value:
@@ -373,7 +436,7 @@ class StaticChecker(BaseVisitor):
         else:
             for ele in ast:
                 this_ele_type = self.visit(ele, given_scope)
-                if not self.compare_types(this_ele_type, ele_type):
+                if not self.can_cast_a_to_b(this_ele_type, ele_type, given_scope):
                     raise StaticError.TypeMismatch(ele)
 
     def check(self):
@@ -388,14 +451,14 @@ class StaticChecker(BaseVisitor):
                 for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
-                self.visit(thing, my_scope)
-                my_scope.append(StructSymbol(thing.name, thing))
+                # visitStructType will return a StructSymbol.
+                my_scope.append(self.visit(thing, my_scope))
             elif isinstance(thing, AST.InterfaceType):
                 for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.name == existing_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
-                self.visit(thing, my_scope)
-                my_scope.append(InterfaceSymbol(thing.name, thing))
+                # visitInterfaceType will return an InterfaceSymbol.
+                my_scope.append(self.visit(thing, my_scope))
             elif isinstance(thing, AST.FuncDecl):
                 for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.name == existing_symbol.name:
@@ -413,7 +476,7 @@ class StaticChecker(BaseVisitor):
                 # Preventative hack-fix for ASTGeneration.py/AST.py flaw.
                 if not isinstance(receiver_type, AST.Id):
                     # TODO: do something about this?
-                    raise StaticError.TypeMismatch(thing)
+                    raise StaticError.TypeMismatch(receiver_type)
 
                 struct_found = False
                 for maybe_struct in filter(lambda s: isinstance(s, Symbol), my_scope):
@@ -425,8 +488,14 @@ class StaticChecker(BaseVisitor):
                             maybe_struct.original_ast.methods.append(thing)
                             struct_found = True
 
-                            # Parameter type and return type resolution is done in visitFuncDecl.
+                            # Parameter type and return type resolution is done in visitFuncDecl/visitMethodDecl.
                             # It's dirty but it works.
+
+                            # Recursion may be used so it's added to the struct first above.
+                            meth_obj = CurrentMethod(thing.fun.name)
+                            self.visit(thing, my_scope + [meth_obj])
+
+                            maybe_struct.resolved_method_types[thing.fun.name] = meth_obj.resolved_types
 
                             break
                         else:
@@ -434,9 +503,6 @@ class StaticChecker(BaseVisitor):
                 if not struct_found:
                     # TODO: this is probably correct but I should ask Phung just to be sure.
                     raise StaticError.Undeclared(StaticError.Type(), receiver_type.name)
-                # Recursion may be used so it's added to the struct first above.
-                meth_obj = CurrentMethod(thing.fun.name)
-                self.visit(thing, my_scope + [meth_obj])
             elif isinstance(thing, AST.VarDecl):
                 for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.varName == existing_symbol.name:
@@ -467,7 +533,7 @@ class StaticChecker(BaseVisitor):
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
-        if (explicit_type is not None) and (implicit_type is not None) and (not self.compare_types(explicit_type, implicit_type)):
+        if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
             raise StaticError.TypeMismatch(ast)
 
         return implicit_type if implicit_type is not None else explicit_type
@@ -480,7 +546,7 @@ class StaticChecker(BaseVisitor):
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
-        if (explicit_type is not None) and (implicit_type is not None) and (not self.compare_types(explicit_type, implicit_type)):
+        if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
             raise StaticError.TypeMismatch(ast)
 
         return implicit_type if implicit_type is not None else explicit_type
@@ -513,9 +579,12 @@ class StaticChecker(BaseVisitor):
         self_sym.resolved_types.set_return_type(self.visit(ast.retType, my_scope + [IsTypenameVisit()]))
 
         current_function_scope_object = CurrentFunction(self_sym.resolved_types)
-        self.visit(ast.body, my_scope + [current_function_scope_object])
+        return_beacon = ReturnBeacon()
+        self.visit(ast.body, my_scope + [current_function_scope_object, return_beacon])
 
-        # TODO: add a ReturnBeacon to track existence of returns.
+        if (not isinstance(self_sym.resolved_types.return_type, AST.VoidType)) and (not return_beacon.has_return):
+            # TODO: what to raise here?
+            raise StaticError.TypeMismatch(ast)
 
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[ScopeObject]):
         # This might be the 2nd ugliest part of the entire file to be quite honest.
@@ -532,7 +601,7 @@ class StaticChecker(BaseVisitor):
 
         # I guess treating the receiver as a parameter symbol is fine for now. It shouldn't interfere with the stuff
         # below which is almost straight-copied from visitFuncDecl.
-        my_scope = given_scope + [FunctionParameterSymbol(ast.receiver, AST.Id(ast), ast.recType)]
+        my_scope = given_scope + [FunctionParameterSymbol(ast.receiver, AST.Id(ast.receiver), ast.recType)]
 
         # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces
         # and functions.
@@ -545,10 +614,15 @@ class StaticChecker(BaseVisitor):
             param_types.append(resolved_param_type)
             my_scope.append(FunctionParameterSymbol(param.parName, param, resolved_param_type))
         self_sym.resolved_types.set_parameter_types(param_types)
-        self_sym.resolved_types.set_return_type(ast.fun.retType)
+        self_sym.resolved_types.set_return_type(self.visit(ast.fun.retType, my_scope + [IsTypenameVisit()]))
 
         current_function_scope_object = CurrentFunction(self_sym.resolved_types)
-        self.visit(ast.fun.body, my_scope + [current_function_scope_object])
+        return_beacon = ReturnBeacon()
+        self.visit(ast.fun.body, my_scope + [current_function_scope_object, return_beacon])
+
+        if (not isinstance(self_sym.resolved_types.return_type, AST.VoidType)) and (not return_beacon.has_return):
+            # TODO: what to raise here?
+            raise StaticError.TypeMismatch(ast)
 
     def visitPrototype(self, ast, param):
         # TODO: complete this.
@@ -573,13 +647,34 @@ class StaticChecker(BaseVisitor):
         # Evaluate indices so we can type-check.
         return AST.ArrayType([self.comptime_evaluate(it, given_scope) for it in ast.dimens], ast.eleType)
 
-    def visitStructType(self, ast, param):
-        # TODO: complete this.
-        return None
+    def visitStructType(self, ast: AST.StructType, given_scope: List[ScopeObject]):
+        self_sym = StructSymbol(ast.name, ast)
 
-    def visitInterfaceType(self, ast, param):
-        # TODO: complete this.
-        return None
+        for i, element in enumerate(ast.elements):
+            field_name, field_type = element
+            for existing_field_name, existing_field_type in ast.elements[:i]:
+                if field_name == existing_field_name:
+                    raise StaticError.Redeclared(StaticError.Field(), element[0])
+            resolved_field_type = self.visit(field_type, given_scope + [IsTypenameVisit()])
+            self_sym.resolved_field_types[field_name] = resolved_field_type
+
+        return self_sym
+
+    def visitInterfaceType(self, ast: AST.InterfaceType, given_scope: List[ScopeObject]):
+        self_sym = InterfaceSymbol(ast.name, ast)
+
+        for i, prototype in enumerate(ast.methods):
+            for existing_prototype in ast.methods[:i]:
+                if prototype.name == existing_prototype.name:
+                    raise StaticError.Redeclared(StaticError.Prototype(), prototype.name)
+
+            resolved_types = ResolvedFunctionTypes()
+            resolved_types.set_return_type(self.visit(prototype.retType, given_scope + [IsTypenameVisit()]))
+            resolved_types.set_parameter_types([self.visit(it, given_scope + [IsTypenameVisit()]) for it in prototype.params])
+
+            self_sym.resolved_method_types[prototype.name] = resolved_types
+
+        return self_sym
 
     def visitBlock(self, ast: AST.Block, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
@@ -644,39 +739,114 @@ class StaticChecker(BaseVisitor):
     def visitAssign(self, ast: AST.Assign, given_scope: List[ScopeObject]):
         lhs_type = self.visit(ast.lhs, given_scope + [IsExpressionVisit()])
         rhs_type = self.visit(ast.rhs, given_scope + [IsExpressionVisit()])
-        # TODO: allow implicit casting here.
-        if not self.compare_types(lhs_type, rhs_type):
+        if not self.can_cast_a_to_b(rhs_type, lhs_type, given_scope):
             raise StaticError.TypeMismatch(ast)
         # Return nothing, I guess.
 
     def visitIf(self, ast: AST.If, given_scope: List[ScopeObject]):
+        return_beacon: ReturnBeacon | None = next(filter(lambda x: isinstance(x, ReturnBeacon), reversed(given_scope)), None)
+        if return_beacon is None:
+            # TODO: what to raise here?
+            raise StaticError.Undeclared(StaticError.Function(), "(no return beacon)")
+
+        then_return_beacon = ReturnBeacon()
+        else_return_beacon = ReturnBeacon()
+
         condition_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
             # TODO: Ask Phung whether to pass ast or ast.expr.
             raise StaticError.TypeMismatch(ast.expr)
-        self.visit(ast.thenStmt, given_scope)
+        self.visit(ast.thenStmt, given_scope + [then_return_beacon])
         if ast.elseStmt is not None:
-            self.visit(ast.elseStmt, given_scope)
+            self.visit(ast.elseStmt, given_scope + [else_return_beacon])
+
+        if then_return_beacon.has_return and else_return_beacon.has_return:
+            return_beacon.set_has_return()
 
     def visitForBasic(self, ast: AST.ForBasic, given_scope: List[ScopeObject]):
-        # TODO: complete this. Use IsForLoopVisit.
-        return None
+        my_scope = given_scope + [IsLoopVisit()]
 
-    def visitForStep(self, ast, given_scope: List[ScopeObject]):
-        # TODO: complete this. Use IsForLoopVisit.
-        return None
+        condition_type = self.visit(ast.cond, given_scope + [IsExpressionVisit()])
+        if not isinstance(condition_type, AST.BoolType):
+            # TODO: Ask Phung whether to pass ast or ast.expr.
+            raise StaticError.TypeMismatch(ast.cond)
+        self.visit(ast.loop, my_scope)
 
-    def visitForEach(self, ast, given_scope: List[ScopeObject]):
-        # TODO: complete this. Use IsForLoopVisit.
-        return None
+    def visitForStep(self, ast: AST.ForStep, given_scope: List[ScopeObject]):
+        my_scope = given_scope.copy()
 
-    def visitContinue(self, ast, given_scope: List[ScopeObject]):
-        # TODO: complete this. Use IsForLoopVisit.
-        return None
+        if isinstance(ast.init, AST.VarDecl):
+            sym = VariableSymbol(ast.init.varName, ast.init)
+            resolved_type = self.visit(ast.init, my_scope)
+            sym.set_type(resolved_type)
+            my_scope.append(sym)
+        elif isinstance(ast.init, AST.Assign) and isinstance(ast.init.lhs, AST.Id):
+            lhs: AST.Id = ast.init.lhs
+            # Is the name not declared? If so, turn it into a variable declaration.
+            existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
+            if existing_maybe_variable is None:
+                # TODO: should VariableSymbol's 2nd argument type accept assignment statement ASTs too?
+                sym = VariableSymbol(lhs.name, ast.init)
 
-    def visitBreak(self, ast, given_scope: List[ScopeObject]):
-        # TODO: complete this. Use IsForLoopVisit.
-        return None
+                try:
+                    implicit_type = self.visit(ast.init.rhs, my_scope + [IsExpressionVisit()])
+                except StaticError.Undeclared as e:
+                    if isinstance(e.k, StaticError.Identifier) and e.n == lhs.name:
+                        # TODO: is this kind of useless?
+                        raise StaticError.Undeclared(StaticError.Identifier(), lhs.name)
+                    raise e
+                # No voids allowed.
+                if isinstance(implicit_type, AST.VoidType):
+                    raise StaticError.TypeMismatch(ast)
+
+                sym.set_type(implicit_type)
+                my_scope.append(sym)
+            else:
+                self.visit(ast.init, my_scope)
+        else:
+            # This is probably a statement.
+            self.visit(ast.init, my_scope)
+
+        condition_type = self.visit(ast.cond, given_scope + [IsExpressionVisit()])
+        if not isinstance(condition_type, AST.BoolType):
+            # TODO: Ask Phung whether to pass ast or ast.expr.
+            raise StaticError.TypeMismatch(ast.cond)
+
+        self.visit(ast.upda, my_scope)
+
+        my_scope += [IsLoopVisit()]
+        self.visit(ast.loop, my_scope)
+
+    def visitForEach(self, ast: AST.ForEach, given_scope: List[ScopeObject]):
+        my_scope = given_scope.copy()
+
+        iteration_target_type = self.visit(ast.arr, given_scope + [IsExpressionVisit()])
+        if not isinstance(iteration_target_type, AST.ArrayType):
+            raise StaticError.TypeMismatch(ast.arr)
+
+        idx_sym = VariableSymbol(ast.idx.name, ast.idx)
+        idx_sym.set_type(AST.IntType())
+
+        value_sym = VariableSymbol(ast.value.name, ast.value)
+        if len(iteration_target_type.dimens) == 1:
+            value_sym.set_type(iteration_target_type.eleType)
+        else:
+            value_sym.set_type(AST.ArrayType(iteration_target_type.dimens[1:], iteration_target_type.eleType))
+
+        my_scope += [idx_sym, value_sym, IsLoopVisit()]
+        self.visit(ast.loop, my_scope)
+
+    def visitContinue(self, ast: AST.Continue, given_scope: List[ScopeObject]):
+        loop_visit = next(filter(lambda x: isinstance(x, IsLoopVisit), reversed(given_scope)), None)
+        if loop_visit is None:
+            # TODO: Ask Phung about what to raise here.
+            raise StaticError.TypeMismatch(ast)
+
+    def visitBreak(self, ast: AST.Break, given_scope: List[ScopeObject]):
+        loop_visit = next(filter(lambda x: isinstance(x, IsLoopVisit), reversed(given_scope)), None)
+        if loop_visit is None:
+            # TODO: Ask Phung about what to raise here.
+            raise StaticError.TypeMismatch(ast)
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
         # Are we in a return?
@@ -685,6 +855,13 @@ class StaticChecker(BaseVisitor):
             # TODO: what to raise here?
             raise StaticError.Undeclared(StaticError.Function(), "(no function)")
 
+        return_beacon: ReturnBeacon | None = next(filter(lambda x: isinstance(x, ReturnBeacon), reversed(given_scope)), None)
+        if return_beacon is None:
+            # TODO: what to raise here?
+            raise StaticError.Undeclared(StaticError.Function(), "(no return beacon)")
+
+        return_beacon.set_has_return()
+
         if isinstance(current_function.resolved_types.return_type, AST.VoidType):
             if ast.expr is not None:
                 raise StaticError.TypeMismatch(ast)
@@ -692,7 +869,7 @@ class StaticChecker(BaseVisitor):
             if ast.expr is None:
                 raise StaticError.TypeMismatch(ast)
             expr_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
-            if not self.compare_types(expr_type, current_function.resolved_types.return_type):
+            if not self.can_cast_a_to_b(expr_type, current_function.resolved_types.return_type, given_scope):
                 raise StaticError.TypeMismatch(ast)
 
     def visitBinaryOp(self, ast: AST.BinaryOp, given_scope: List[ScopeObject]):
@@ -760,7 +937,6 @@ class StaticChecker(BaseVisitor):
                         raise StaticError.TypeMismatch(ast)
 
                     # Check arguments.
-                    # TODO: allow implicit casting here.
                     if len(ast.args) != len(sym.original_ast.params):
                         raise StaticError.TypeMismatch(ast)
                     # Sanity check
@@ -771,7 +947,7 @@ class StaticChecker(BaseVisitor):
                     for i, arg in enumerate(ast.args):
                         # No need to append IsExpressionVisit (we're already in one.) TODO: add a sanity check for that
                         arg_type = self.visit(arg, given_scope)
-                        if not self.compare_types(arg_type, sym.resolved_types.parameter_types[i]):
+                        if not self.can_cast_a_to_b(arg_type, sym.resolved_types.parameter_types[i], given_scope):
                             raise StaticError.TypeMismatch(ast)
 
                     return sym.resolved_types.return_type
@@ -784,22 +960,21 @@ class StaticChecker(BaseVisitor):
         receiver_type = self.visit(ast.receiver, given_scope + [IsExpressionVisit()])
         if isinstance(receiver_type, AST.Id):
             # Resolve the type (again)
-            for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol),
-                              reversed(given_scope)):
+            for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
                 if sym.name == receiver_type.name:
                     if isinstance(sym, StructSymbol):
                         for method in sym.original_ast.methods:
                             if method.fun.name == ast.metName:
+                                resolved_method_types = sym.resolved_method_types[ast.metName]
                                 # TODO: count arguments and check their receivers.
-                                # TODO: this is wrong; use resolved type.
-                                return method.fun.retType
+                                return resolved_method_types.return_type
                         raise StaticError.Undeclared(StaticError.Method(), ast.metName)
                     elif isinstance(sym, InterfaceSymbol):
                         for prototype in sym.original_ast.methods:
                             if prototype.name == ast.metName:
+                                resolved_method_types = sym.resolved_method_types[ast.metName]
                                 # TODO: count arguments and check their receivers.
-                                # TODO: this is wrong; use resolved type.
-                                return prototype.retType
+                                return resolved_method_types.return_type
                         raise StaticError.Undeclared(StaticError.Method(), ast.metName)
                     else:
                         # TODO: ???!!!
@@ -900,5 +1075,5 @@ class StaticChecker(BaseVisitor):
         return AST.Id(ast.name)
 
     def visitNilLiteral(self, ast, param):
-        # TODO: should there be a class to express the (lack of a) type of a nil literal?
-        return None
+        # TODO: check if this is really fine.
+        return NilType()
