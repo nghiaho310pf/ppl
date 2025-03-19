@@ -41,7 +41,7 @@ class StructSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.StructType):
         super().__init__(name)
         self.original_ast = original_ast
-        self.resolved_field_types = dict[str, AST.Type]
+        self.resolved_field_types = dict[str, AST.Type]()
         self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
 
 class InterfaceSymbol(Symbol):
@@ -966,14 +966,42 @@ class StaticChecker(BaseVisitor):
                         for method in sym.original_ast.methods:
                             if method.fun.name == ast.metName:
                                 resolved_method_types = sym.resolved_method_types[ast.metName]
-                                # TODO: count arguments and check their receivers.
+
+                                # Check arguments.
+                                if len(ast.args) != len(method.fun.params):
+                                    raise StaticError.TypeMismatch(ast)
+                                # Sanity check
+                                if len(method.fun.params) != len(resolved_method_types.parameter_types):
+                                    # Sanity check failed !!??!!!??
+                                    raise StaticError.TypeMismatch(ast)
+
+                                for i, arg in enumerate(ast.args):
+                                    # No need to append IsExpressionVisit (we're already in one.) TODO: add a sanity check for that
+                                    arg_type = self.visit(arg, given_scope)
+                                    if not self.can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i], given_scope):
+                                        raise StaticError.TypeMismatch(ast)
+
                                 return resolved_method_types.return_type
                         raise StaticError.Undeclared(StaticError.Method(), ast.metName)
                     elif isinstance(sym, InterfaceSymbol):
                         for prototype in sym.original_ast.methods:
                             if prototype.name == ast.metName:
                                 resolved_method_types = sym.resolved_method_types[ast.metName]
-                                # TODO: count arguments and check their receivers.
+
+                                # Check arguments.
+                                if len(ast.args) != len(prototype.params):
+                                    raise StaticError.TypeMismatch(ast)
+                                # Sanity check
+                                if len(prototype.params) != len(resolved_method_types.parameter_types):
+                                    # Sanity check failed !!??!!!??
+                                    raise StaticError.TypeMismatch(ast)
+
+                                for i, arg in enumerate(ast.args):
+                                    # No need to append IsExpressionVisit (we're already in one.) TODO: add a sanity check for that
+                                    arg_type = self.visit(arg, given_scope)
+                                    if not self.can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i], given_scope):
+                                        raise StaticError.TypeMismatch(ast)
+
                                 return resolved_method_types.return_type
                         raise StaticError.Undeclared(StaticError.Method(), ast.metName)
                     else:
@@ -1058,19 +1086,32 @@ class StaticChecker(BaseVisitor):
 
     def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[ScopeObject]):
         # Find the struct name.
-        struct_ast: AST.StructType | None = None
+        struct_sym: StructSymbol | None = None
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
             if sym.name == ast.name:
-                if isinstance(sym, StructSymbol) or isinstance(sym, StructSymbol):
-                    struct_ast = sym.original_ast
-                elif isinstance(sym, FunctionSymbol) or isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
-                    raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+                if isinstance(sym, StructSymbol):
+                    struct_sym = sym
                 else:
-                    return None
-        if struct_ast is None:
+                    raise StaticError.TypeMismatch(ast)
+        if struct_sym is None:
             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
 
-        # TODO: check each field exists and that there are no dupes.
+        for i, element in enumerate(ast.elements):
+            field_name, field_value = element
+            for existing_field_name, existing_field_value in ast.elements[:i]:
+                if field_name == existing_field_name:
+                    raise StaticError.Redeclared(StaticError.Field(), field_name)
+
+            if field_name not in struct_sym.resolved_field_types:
+                raise StaticError.Undeclared(StaticError.Field(), field_name)
+
+            field_initializer_type = self.visit(field_value, given_scope + [IsExpressionVisit()])
+            if not self.can_cast_a_to_b(field_initializer_type, struct_sym.resolved_field_types[field_name], given_scope):
+                raise StaticError.TypeMismatch(field_value)
+
+        if len(ast.elements) != len(struct_sym.original_ast.elements):
+            # TODO: Ask Phung what to raise here.
+            raise StaticError.TypeMismatch(ast)
 
         return AST.Id(ast.name)
 

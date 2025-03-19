@@ -148,7 +148,7 @@ class CheckSuite(unittest.TestCase):
             }
 
             func X() Point {
-                var a = Point{};
+                var a = Point{x: 2.0, y: 4.0};
                 var x float = a.Length();
                 return a
             }
