@@ -437,9 +437,79 @@ class StaticChecker(BaseVisitor):
                 if not self.can_cast_a_to_b(this_ele_type, ele_type, given_scope):
                     raise StaticError.TypeMismatch(ele)
 
+    @staticmethod
+    def create_global_functions():
+        get_int = FunctionSymbol("getInt", AST.Id("getInt"))
+        get_int.resolved_types.set_parameter_types([])
+        get_int.resolved_types.set_return_type(AST.IntType())
+
+        put_int = FunctionSymbol("putInt", AST.Id("putInt"))
+        put_int.resolved_types.set_parameter_types([AST.IntType()])
+        put_int.resolved_types.set_return_type(AST.VoidType())
+
+        put_int_ln = FunctionSymbol("putIntLn", AST.Id("putIntLn"))
+        put_int_ln.resolved_types.set_parameter_types([AST.IntType()])
+        put_int_ln.resolved_types.set_return_type(AST.VoidType())
+
+        get_float = FunctionSymbol("getFloat", AST.Id("getFloat"))
+        get_float.resolved_types.set_parameter_types([])
+        get_float.resolved_types.set_return_type(AST.FloatType())
+
+        put_float = FunctionSymbol("putFloat", AST.Id("putFloat"))
+        put_float.resolved_types.set_parameter_types([AST.FloatType()])
+        put_float.resolved_types.set_return_type(AST.VoidType())
+
+        put_float_ln = FunctionSymbol("putFloatLn", AST.Id("putFloatLn"))
+        put_float_ln.resolved_types.set_parameter_types([AST.FloatType()])
+        put_float_ln.resolved_types.set_return_type(AST.VoidType())
+
+        get_bool = FunctionSymbol("getBool", AST.Id("getBool"))
+        get_bool.resolved_types.set_parameter_types([])
+        get_bool.resolved_types.set_return_type(AST.BoolType())
+
+        put_bool = FunctionSymbol("putBool", AST.Id("putBool"))
+        put_bool.resolved_types.set_parameter_types([AST.BoolType()])
+        put_bool.resolved_types.set_return_type(AST.VoidType())
+
+        put_bool_ln = FunctionSymbol("putBoolLn", AST.Id("putBoolLn"))
+        put_bool_ln.resolved_types.set_parameter_types([AST.BoolType()])
+        put_bool_ln.resolved_types.set_return_type(AST.VoidType())
+
+        get_string = FunctionSymbol("getString", AST.Id("getString"))
+        get_string.resolved_types.set_parameter_types([])
+        get_string.resolved_types.set_return_type(AST.StringType())
+
+        put_string = FunctionSymbol("putString", AST.Id("putString"))
+        put_string.resolved_types.set_parameter_types([AST.StringType()])
+        put_string.resolved_types.set_return_type(AST.VoidType())
+
+        put_string_ln = FunctionSymbol("putStringLn", AST.Id("putStringLn"))
+        put_string_ln.resolved_types.set_parameter_types([AST.StringType()])
+        put_string_ln.resolved_types.set_return_type(AST.VoidType())
+
+        put_ln = FunctionSymbol("putLn", AST.Id("putLn"))
+        put_ln.resolved_types.set_parameter_types([])
+        put_ln.resolved_types.set_return_type(AST.VoidType())
+
+        return [
+            get_int,
+            put_int,
+            put_int_ln,
+            get_float,
+            put_float,
+            put_float_ln,
+            get_bool,
+            put_bool,
+            put_bool_ln,
+            get_string,
+            put_string,
+            put_string_ln,
+            put_ln,
+        ]
+
     def check(self):
         # TODO: there are pre-defined global methods; add them here.
-        return self.visit(self.root_ast, [])
+        return self.visit(self.root_ast, [self.create_global_functions()])
 
     def visitProgram(self, ast: AST.Program, given_scope: List[ScopeObject]):
         my_scope: List[ScopeObject] = given_scope.copy()
