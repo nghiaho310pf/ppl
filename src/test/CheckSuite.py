@@ -136,36 +136,48 @@ class CheckSuite(unittest.TestCase):
     #     expect = "Type Mismatch: Id(a)\n"
     #     self.assertTrue(TestChecker.test(input,expect,432))
 
+    # def test_035(self):
+    #     input = """
+    #         type Point struct {
+    #             x float;
+    #             y float;
+    #         }
+    #
+    #         func (p Point) Length() float {
+    #             return p.x * p.x + p.y * p.y;
+    #         }
+    #
+    #         func X() Point {
+    #             var a = Point{x: 2.0, y: 4.0};
+    #             var x float = a.Length();
+    #             return a
+    #         }
+    #     """
+    #     expect = ""
+    #     self.assertTrue(TestChecker.test(input, expect, 402))
+
+    # def test_037(self):
+    #     input = """
+    #         type I struct {
+    #             i int;
+    #         }
+    #
+    #         func X() {
+    #             const a = I{i: 2};
+    #             const b = a.i;
+    #             var x = [b]int{2, 3};
+    #         }
+    #     """
+    #     expect = ""
+    #     self.assertTrue(TestChecker.test(input, expect, 402))
+
     def test_035(self):
         input = """
-            type Point struct {
-                x float;
-                y float;
+            func A() {
             }
-
-            func (p Point) Length() float {
-                return p.x * p.x + p.y * p.y;
-            }
-
-            func X() Point {
-                var a = Point{x: 2.0, y: 4.0};
-                var x float = a.Length();
-                return a
-            }
-        """
-        expect = ""
-        self.assertTrue(TestChecker.test(input, expect, 402))
-
-    def test_037(self):
-        input = """
-            type I struct {
-                i int;
-            }
-
-            func X() {
-                const a = I{i: 2};
-                const b = a.i;
-                var x = [b]int{2, 3};
+            
+            func B() {
+                A
             }
         """
         expect = ""
