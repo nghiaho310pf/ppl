@@ -508,7 +508,6 @@ class StaticChecker(BaseVisitor):
         ]
 
     def check(self):
-        # TODO: there are pre-defined global methods; add them here.
         return self.visit(self.root_ast, [self.create_global_functions()])
 
     def visitProgram(self, ast: AST.Program, given_scope: List[ScopeObject]):
