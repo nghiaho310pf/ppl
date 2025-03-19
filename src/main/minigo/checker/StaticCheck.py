@@ -51,15 +51,15 @@ class InterfaceSymbol(Symbol):
         self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
 
 class FunctionSymbol(Symbol):
-    def __init__(self, name: str, original_ast: AST.FuncDecl):
+    def __init__(self, name: str, original_ast: AST.AST):
         super().__init__(name)
         self.original_ast = original_ast
         self.resolved_types = ResolvedFunctionTypes()
 
 class VariableSymbol(Symbol):
-    def __init__(self, name: str, original_ast: AST.VarDecl):
+    def __init__(self, name: str, original_ast: AST.VarDecl | AST.Assign | AST.Id):
         super().__init__(name)
-        self.original_ast = original_ast
+        self.original_ast = original_ast # VarDecl for usual vars, Assign for implicit vars from assigns, Id for loops
         self.resolved_type = None
 
     def set_type(self, new_type: AST.Type):
@@ -566,6 +566,7 @@ class StaticChecker(BaseVisitor):
 
                             break
                         else:
+                            # TODO: Ask Phung about what to raise here.
                             raise StaticError.TypeMismatch(thing)
                 if not struct_found:
                     # TODO: Ask Phung about what to raise here.
@@ -600,8 +601,10 @@ class StaticChecker(BaseVisitor):
         implicit_type: AST.Type | None = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if (ast.varInit is not None) else None
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
+            # TODO: Ask Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
+            # TODO: Ask Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
@@ -617,8 +620,10 @@ class StaticChecker(BaseVisitor):
 
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
+            # TODO: Ask Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
+            # TODO: Ask Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
@@ -790,7 +795,6 @@ class StaticChecker(BaseVisitor):
                 if existing_maybe_variable is None:
                     this_block_names.append(lhs.name)
 
-                    # TODO: should VariableSymbol's 2nd argument type accept assignment statement ASTs too?
                     sym = VariableSymbol(lhs.name, statement)
 
                     try:
@@ -1013,10 +1017,10 @@ class StaticChecker(BaseVisitor):
                         raise StaticError.TypeMismatch(ast)
 
                     # Check arguments.
-                    if len(ast.args) != len(sym.original_ast.params):
+                    if isinstance(sym.original_ast, AST.FuncDecl) and (len(ast.args) != len(sym.original_ast.params)):
                         raise StaticError.TypeMismatch(ast)
                     # Sanity check
-                    if len(sym.original_ast.params) != len(sym.resolved_types.parameter_types):
+                    if isinstance(sym.original_ast, AST.FuncDecl) and (len(sym.original_ast.params) != len(sym.resolved_types.parameter_types)):
                         # Sanity check failed !!??!!!??
                         raise StaticError.TypeMismatch(ast)
 
@@ -1135,10 +1139,9 @@ class StaticChecker(BaseVisitor):
             for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
                 if sym.name == receiver_type.name:
                     if isinstance(sym, StructSymbol):
-                        for field_name, field_type in sym.original_ast.elements:
-                            if field_name == ast.field:
-                                return field_type
-                        raise StaticError.Undeclared(StaticError.Field(), ast.field)
+                        if ast.field not in sym.resolved_field_types:
+                            raise StaticError.Undeclared(StaticError.Field(), ast.field)
+                        return sym.resolved_field_types[ast.field]
                     else:
                         raise StaticError.TypeMismatch(ast)
         else:
@@ -1190,7 +1193,8 @@ class StaticChecker(BaseVisitor):
 
         if len(ast.elements) != len(struct_sym.original_ast.elements):
             # TODO: Ask Phung what to raise here.
-            raise StaticError.TypeMismatch(ast)
+            first_uninitialized_field_name = next(filter(lambda x: x[0] not in [y[0] for y in ast.elements], struct_sym.original_ast.elements), None)
+            raise StaticError.Undeclared(StaticError.Field(), first_uninitialized_field_name[0])
 
         return AST.Id(ast.name)
 

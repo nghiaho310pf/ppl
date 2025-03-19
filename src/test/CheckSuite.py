@@ -173,12 +173,8 @@ class CheckSuite(unittest.TestCase):
 
     def test_035(self):
         input = """
-            func A() {
-            }
-            
-            func B() {
-                A
-            }
+            type X struct { i int; }
+            var y = X{}
         """
         expect = ""
         self.assertTrue(TestChecker.test(input, expect, 402))
