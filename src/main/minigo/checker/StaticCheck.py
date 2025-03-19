@@ -536,6 +536,10 @@ class StaticChecker(BaseVisitor):
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
             raise StaticError.TypeMismatch(ast)
 
+        if (explicit_type is None) and isinstance(implicit_type, NilType):
+            # TODO: Ask Phung what to raise here.
+            raise StaticError.TypeMismatch(ast)
+
         return implicit_type if implicit_type is not None else explicit_type
 
     def visitConstDecl(self, ast: AST.ConstDecl, given_scope: List[ScopeObject]):
@@ -547,6 +551,10 @@ class StaticChecker(BaseVisitor):
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
+            raise StaticError.TypeMismatch(ast)
+
+        if (explicit_type is None) and isinstance(implicit_type, NilType):
+            # TODO: Ask Phung what to raise here.
             raise StaticError.TypeMismatch(ast)
 
         return implicit_type if implicit_type is not None else explicit_type
