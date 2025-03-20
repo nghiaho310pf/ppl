@@ -514,7 +514,7 @@ class StaticChecker(BaseVisitor):
         ]
 
     def check(self):
-        return self.visit(self.root_ast, [self.create_global_functions()])
+        return self.visit(self.root_ast, self.create_global_functions())
 
     def visitProgram(self, ast: AST.Program, given_scope: List[ScopeObject]):
         my_scope: List[ScopeObject] = given_scope.copy()
