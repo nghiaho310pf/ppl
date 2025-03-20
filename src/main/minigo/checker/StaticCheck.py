@@ -589,7 +589,7 @@ class StaticChecker(BaseVisitor):
             elif isinstance(thing, AST.ConstDecl):
                 for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
                     if thing.conName == existing_symbol.name:
-                        raise StaticError.Redeclared(StaticError.Variable(), thing.conName)
+                        raise StaticError.Redeclared(StaticError.Constant(), thing.conName)
                 resolved_type = self.visit(thing, my_scope)
                 resolved_value = self.comptime_evaluate(thing.iniExpr, my_scope) if (thing.iniExpr is not None) else None
                 sym = ConstantSymbol(thing.conName, thing)
