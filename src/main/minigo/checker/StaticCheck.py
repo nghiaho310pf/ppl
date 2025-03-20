@@ -95,9 +95,9 @@ class CurrentFunction(ScopeObject):
 # Cheap hack for resolving types for methods.
 
 class CurrentMethod(ScopeObject):
-    def __init__(self, name: str):
+    def __init__(self, name: str, struct_symbol: StructSymbol):
         super().__init__()
-        self.resolved_types = ResolvedFunctionTypes()
+        self.struct_symbol = struct_symbol
         # Only used for a sanity check.
         self.name = name
 
@@ -565,10 +565,8 @@ class StaticChecker(BaseVisitor):
                             # It's dirty but it works.
 
                             # Recursion may be used so it's added to the struct first above.
-                            meth_obj = CurrentMethod(thing.fun.name)
+                            meth_obj = CurrentMethod(thing.fun.name, maybe_struct)
                             self.visit(thing, my_scope + [meth_obj])
-
-                            maybe_struct.resolved_method_types[thing.fun.name] = meth_obj.resolved_types
 
                             break
                         else:
@@ -700,10 +698,14 @@ class StaticChecker(BaseVisitor):
             resolved_param_type = self.visit(param.parType, my_scope + [IsTypenameVisit()])
             param_types.append(resolved_param_type)
             my_scope.append(FunctionParameterSymbol(param.parName, param, resolved_param_type))
-        self_sym.resolved_types.set_parameter_types(param_types)
-        self_sym.resolved_types.set_return_type(self.visit(ast.fun.retType, my_scope + [IsTypenameVisit()]))
 
-        current_function_scope_object = CurrentFunction(self_sym.resolved_types)
+        resolved_types = ResolvedFunctionTypes()
+        resolved_types.set_parameter_types(param_types)
+        resolved_types.set_return_type(self.visit(ast.fun.retType, my_scope + [IsTypenameVisit()]))
+
+        self_sym.struct_symbol.resolved_method_types[ast.fun.name] = resolved_types
+
+        current_function_scope_object = CurrentFunction(resolved_types)
         return_beacon = ReturnBeacon()
         self.visit(ast.fun.body, my_scope + [current_function_scope_object, return_beacon])
 
