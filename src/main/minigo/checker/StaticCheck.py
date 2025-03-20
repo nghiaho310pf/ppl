@@ -439,7 +439,7 @@ class StaticChecker(BaseVisitor):
                 self.check_nested_list(original_ast, sublist, ele_type, dimens[1:], given_scope)
         else:
             for ele in ast:
-                this_ele_type = self.visit(ele, given_scope)
+                this_ele_type = self.visit(ele + [IsExpressionVisit()], given_scope)
                 if not self.can_cast_a_to_b(this_ele_type, ele_type, given_scope):
                     raise StaticError.TypeMismatch(ele)
 
@@ -1141,7 +1141,9 @@ class StaticChecker(BaseVisitor):
         return None
 
     def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: List[ScopeObject]):
-        receiver_type = self.visit(ast.receiver, given_scope + [IsExpressionVisit()])
+        # No need to append IsExpressionVisit (we're already in one.)
+        # TODO: add a sanity check for that
+        receiver_type = self.visit(ast.receiver, given_scope)
         if isinstance(receiver_type, AST.Id):
             # Resolve the type (again)
             for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
