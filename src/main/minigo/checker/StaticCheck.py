@@ -115,6 +115,12 @@ class IsTypenameVisit(IdResolutionMode):
     def __init__(self):
         super().__init__()
 
+# For banning writes to consts.
+
+class IsLeftHandSideVisit(ScopeObject):
+    def __init__(self):
+        super().__init__()
+
 # For banning function/method calls and references to non-consts.
 
 class IsComptimeExpressionVisit(ScopeObject):
@@ -817,7 +823,7 @@ class StaticChecker(BaseVisitor):
                 self.visit(statement, my_scope)
 
     def visitAssign(self, ast: AST.Assign, given_scope: List[ScopeObject]):
-        lhs_type = self.visit(ast.lhs, given_scope + [IsExpressionVisit()])
+        lhs_type = self.visit(ast.lhs, given_scope + [IsExpressionVisit(), IsLeftHandSideVisit()])
         rhs_type = self.visit(ast.rhs, given_scope + [IsExpressionVisit()])
         if not self.can_cast_a_to_b(rhs_type, lhs_type, given_scope):
             raise StaticError.TypeMismatch(ast)
@@ -887,7 +893,7 @@ class StaticChecker(BaseVisitor):
             # This is probably a statement.
             self.visit(ast.init, my_scope)
 
-        condition_type = self.visit(ast.cond, given_scope + [IsExpressionVisit()])
+        condition_type = self.visit(ast.cond, my_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
             # TODO: Ask Phung whether to pass ast or ast.expr.
             raise StaticError.TypeMismatch(ast.cond)
@@ -900,7 +906,7 @@ class StaticChecker(BaseVisitor):
     def visitForEach(self, ast: AST.ForEach, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
 
-        iteration_target_type = self.visit(ast.arr, given_scope + [IsExpressionVisit()])
+        iteration_target_type = self.visit(ast.arr, my_scope + [IsExpressionVisit()])
         if not isinstance(iteration_target_type, AST.ArrayType):
             raise StaticError.TypeMismatch(ast.arr)
 
@@ -1112,6 +1118,10 @@ class StaticChecker(BaseVisitor):
                     # TODO: Ask Phung about this.
                     raise StaticError.TypeMismatch(ast)
                 elif isinstance(sym, ConstantSymbol):
+                    maybe_lhs: IsLeftHandSideVisit | None = next(filter(lambda x: isinstance(x, IsLeftHandSideVisit), reversed(given_scope)), None)
+                    if isinstance(maybe_lhs, IsLeftHandSideVisit):
+                        # TODO: Ask Phung about what error to raise here.
+                        raise StaticError.TypeMismatch(ast)
                     return sym.resolved_type
                 elif isinstance(sym, VariableSymbol):
                     # Referencing other variables isn't allowed in constants.
