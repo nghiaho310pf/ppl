@@ -1169,7 +1169,8 @@ class StaticChecker(BaseVisitor):
 
     def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[ScopeObject]):
         dimens = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
-        ele_type = self.visit(ast.eleType, given_scope)
+        # TODO: is the IsTypenameVisit() instance useless here?
+        ele_type = self.visit(ast.eleType, given_scope + [IsTypenameVisit()])
         self.check_nested_list(ast, ast.value, ele_type, dimens, given_scope)
         # TODO: maybe assert ele_type and ast.eleType are the exact same
         return AST.ArrayType(dimens, ele_type)
