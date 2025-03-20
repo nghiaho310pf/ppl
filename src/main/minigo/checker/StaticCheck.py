@@ -850,13 +850,11 @@ class StaticChecker(BaseVisitor):
             return_beacon.set_has_return()
 
     def visitForBasic(self, ast: AST.ForBasic, given_scope: List[ScopeObject]):
-        my_scope = given_scope + [IsLoopVisit()]
-
         condition_type = self.visit(ast.cond, given_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
             # TODO: Ask Phung whether to pass ast or ast.expr.
             raise StaticError.TypeMismatch(ast.cond)
-        self.visit(ast.loop, my_scope)
+        self.visit(ast.loop, given_scope + [IsLoopVisit(), ReturnBeacon()])
 
     def visitForStep(self, ast: AST.ForStep, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
@@ -900,7 +898,7 @@ class StaticChecker(BaseVisitor):
 
         self.visit(ast.upda, my_scope)
 
-        my_scope += [IsLoopVisit()]
+        my_scope += [IsLoopVisit(), ReturnBeacon()]
         self.visit(ast.loop, my_scope)
 
     def visitForEach(self, ast: AST.ForEach, given_scope: List[ScopeObject]):
@@ -919,7 +917,7 @@ class StaticChecker(BaseVisitor):
         else:
             value_sym.set_type(AST.ArrayType(iteration_target_type.dimens[1:], iteration_target_type.eleType))
 
-        my_scope += [idx_sym, value_sym, IsLoopVisit()]
+        my_scope += [idx_sym, value_sym, IsLoopVisit(), ReturnBeacon()]
         self.visit(ast.loop, my_scope)
 
     def visitContinue(self, ast: AST.Continue, given_scope: List[ScopeObject]):

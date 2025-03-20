@@ -173,8 +173,12 @@ class CheckSuite(unittest.TestCase):
 
     def test_035(self):
         input = """
-            type X struct { i int; }
-            var y = X{}
+            func X() int {
+                for x := 0; x < 10; x += 2 {
+                    return 1
+                }
+                return 2
+            }
         """
         expect = ""
         self.assertTrue(TestChecker.test(input, expect, 402))
