@@ -77,6 +77,7 @@ class ConstantSymbol(Symbol):
         self.resolved_type = None
         self.resolved_value = None
 
+        self.being_checked = False
         self.done_resolving = False
 
 class FunctionParameterSymbol(Symbol):
@@ -261,6 +262,8 @@ class StaticChecker(BaseVisitor):
                         return AST.StructLiteral(typename.name, [
                             (name, StaticChecker.local_make_default_value(resolved_type, given_scope)) for name, resolved_type in sym.resolved_field_types.items()
                         ])
+                    elif isinstance(sym, InterfaceSymbol):
+                        return AST.NilLiteral()
                     else:
                         raise StaticError.TypeMismatch(typename)
             raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
@@ -661,7 +664,10 @@ class StaticChecker(BaseVisitor):
                     if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol) or isinstance(sym, FunctionSymbol) or isinstance(sym, VariableSymbol):
                         raise StaticError.TypeMismatch(ast)
                     elif (i < index_limit) and isinstance(sym, ConstantSymbol):
-                        self.recursively_resolve_constant(sym, index_limit)
+                        if sym.being_checked:
+                            # Cyclic usage! TODO: what to raise here?
+                            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+                        self.global_resolve_constant(sym, index_limit)
                         return sym.resolved_value
             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
         elif isinstance(ast, AST.FuncCall) or isinstance(ast, AST.MethCall):
@@ -839,12 +845,14 @@ class StaticChecker(BaseVisitor):
             else:
                 raise StaticError.TypeMismatch(ast)
         elif isinstance(ast, AST.StructLiteral):
-            for sym in self.global_declarations:
+            for i, sym in enumerate(self.global_declarations):
                 if isinstance(sym, Symbol) and (sym.name == ast.name):
                     if isinstance(sym, StructSymbol):
                         if sym.being_checked:
+                            # Cyclic usage! TODO: what to raise here?
                             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
-                        self.recursively_resolve_struct_definition(sym, index_limit)
+                        # TODO: is extending the index limit here REALLY fine?
+                        self.global_resolve_struct_definition(sym, max(index_limit, i))
 
                         elements_ast: List[Tuple[str, AST.Expr]] = ast.elements
 
@@ -870,7 +878,7 @@ class StaticChecker(BaseVisitor):
                         return AST.StructLiteral(ast.name, [
                             (name, self.global_comptime_evaluate(val, index_limit)) for name, val in elements_ast
                         ] + [
-                            (name, self.recursively_make_default_value(sym.resolved_field_types[name], index_limit)) for name, typename in uninitialized_fields
+                            (name, self.global_make_default_value(sym.resolved_field_types[name], index_limit)) for name, typename in uninitialized_fields
                         ])
                     else:
                         raise StaticError.TypeMismatch(ast)
@@ -895,7 +903,7 @@ class StaticChecker(BaseVisitor):
             return AST.Id(ast.name)
         return NilType()
 
-    def recursively_resolve_struct_definition(self, sym: StructSymbol, index_limit: int):
+    def global_resolve_struct_definition(self, sym: StructSymbol, index_limit: int):
         if sym.done_resolving:
             return
 
@@ -906,13 +914,13 @@ class StaticChecker(BaseVisitor):
                 if field_name == existing_field_name:
                     raise StaticError.Redeclared(StaticError.Field(), element[0])
 
-            resolved_field_type = self.recursively_resolve_typename(field_type, index_limit)
+            resolved_field_type = self.global_resolve_typename(field_type, index_limit)
             sym.resolved_field_types[field_name] = resolved_field_type
         sym.being_checked = False
         sym.done_resolving = True
         return AST.Id(sym.name)
 
-    def recursively_resolve_interface_definition(self, sym: InterfaceSymbol, index_limit: int):
+    def global_resolve_interface_definition(self, sym: InterfaceSymbol, index_limit: int):
         if sym.done_resolving:
             return
 
@@ -926,15 +934,15 @@ class StaticChecker(BaseVisitor):
                 raise StaticError.Redeclared(StaticError.Prototype(), prototype.name)
 
             resolved_types = ResolvedFunctionTypes()
-            resolved_types.return_type = self.recursively_resolve_typename(prototype.retType, index_limit)
-            resolved_types.parameter_types = [self.recursively_resolve_typename(it, index_limit) for it in prototype.params]
+            resolved_types.return_type = self.global_resolve_typename(prototype.retType, index_limit)
+            resolved_types.parameter_types = [self.global_resolve_typename(it, index_limit) for it in prototype.params]
 
             sym.resolved_method_types[prototype.name] = resolved_types
         sym.being_checked = False
         sym.done_resolving = True
         return AST.Id(sym.name)
 
-    def recursively_resolve_function_definition(self, sym: FunctionSymbol, index_limit: int):
+    def global_resolve_function_definition(self, sym: FunctionSymbol, index_limit: int):
         if sym.done_resolving:
             return
 
@@ -942,49 +950,51 @@ class StaticChecker(BaseVisitor):
         if not isinstance(ast, AST.FuncDecl):
             return
 
-        sym.resolved_types.return_type = self.recursively_resolve_typename(ast.retType, index_limit)
-        sym.resolved_types.parameter_types = [self.recursively_resolve_typename(it.parType, index_limit) for it in ast.params]
+        sym.resolved_types.return_type = self.global_resolve_typename(ast.retType, index_limit)
+        sym.resolved_types.parameter_types = [self.global_resolve_typename(it.parType, index_limit) for it in ast.params]
         sym.done_resolving = True
 
-    def recursively_resolve_method_definition(self, recv_struct_sym: StructSymbol, ast: AST.MethodDecl, index_limit: int):
+    def global_resolve_method_definition(self, recv_struct_sym: StructSymbol, ast: AST.MethodDecl, index_limit: int):
         resolved_types = ResolvedFunctionTypes()
-        resolved_types.return_type = self.recursively_resolve_typename(ast.fun.retType, index_limit)
-        resolved_types.parameter_types = [self.recursively_resolve_typename(it.parType, index_limit) for it in ast.fun.params]
+        resolved_types.return_type = self.global_resolve_typename(ast.fun.retType, index_limit)
+        resolved_types.parameter_types = [self.global_resolve_typename(it.parType, index_limit) for it in ast.fun.params]
 
         recv_struct_sym.resolved_method_types[ast.fun.name] = resolved_types
 
-    def recursively_resolve_constant(self, sym: ConstantSymbol, index_limit: int):
+    def global_resolve_constant(self, sym: ConstantSymbol, index_limit: int):
         if sym.done_resolving:
             return
 
+        sym.being_checked = True
         sym.resolved_value = self.global_comptime_evaluate(sym.original_ast.iniExpr, index_limit)
         sym.resolved_type = self.type_of_literal(sym.resolved_value)
         if sym.original_ast.conType is not None:
-            explicit_type = self.recursively_resolve_typename(sym.original_ast.conType, index_limit)
+            explicit_type = self.global_resolve_typename(sym.original_ast.conType, index_limit)
             if not self.global_can_cast_a_to_b(sym.resolved_type, explicit_type, index_limit):
                 raise StaticError.TypeMismatch(sym.original_ast.iniExpr)
+        sym.being_checked = False
         sym.done_resolving = True
 
-    def recursively_resolve_typename(self, typename: AST.Type, index_limit: int):
+    def global_resolve_typename(self, typename: AST.Type, index_limit: int):
         if isinstance(typename, AST.Id):
             for i, sym in enumerate(self.global_declarations):
                 if isinstance(sym, Symbol) and (sym.name == typename.name):
                     if isinstance(sym, StructSymbol):
                         if sym.being_checked:
                             raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
-                        return self.recursively_resolve_struct_definition(sym, index_limit)
+                        return self.global_resolve_struct_definition(sym, index_limit)
                     elif isinstance(sym, InterfaceSymbol):
-                        return self.recursively_resolve_interface_definition(sym, index_limit)
+                        return self.global_resolve_interface_definition(sym, index_limit)
                     elif (i < index_limit) and (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)):
                         raise StaticError.TypeMismatch(typename)
             raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
         elif isinstance(typename, AST.ArrayType):
             dimensions = [self.global_comptime_evaluate(it, index_limit) for it in typename.dimens]
-            resolved_element_type = self.recursively_resolve_typename(typename.eleType, index_limit)
+            resolved_element_type = self.global_resolve_typename(typename.eleType, index_limit)
             return AST.ArrayType(dimensions, resolved_element_type)
         return typename
 
-    def recursively_make_default_value(self, typename: AST.Type, index_limit: int, make_nested_list: bool = False):
+    def global_make_default_value(self, typename: AST.Type, index_limit: int, make_nested_list: bool = False):
         if isinstance(typename, AST.IntType):
             return AST.IntLiteral(0)
         elif isinstance(typename, AST.FloatType):
@@ -999,7 +1009,7 @@ class StaticChecker(BaseVisitor):
             if not isinstance(d, AST.IntLiteral):
                 raise StaticError.TypeMismatch(typename)
             child_type = AST.ArrayType(typename.dimens[1:], typename.eleType) if len(typename.dimens) > 1 else typename.eleType
-            vals: AST.NestedList = [self.recursively_make_default_value(child_type, index_limit, True) for _ in range(d.value)]
+            vals: AST.NestedList = [self.global_make_default_value(child_type, index_limit, True) for _ in range(d.value)]
             if make_nested_list:
                 return vals
             return AST.ArrayLiteral(typename.dimens, typename.eleType, vals)
@@ -1010,10 +1020,10 @@ class StaticChecker(BaseVisitor):
                         if sym.being_checked:
                             raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
                         return AST.StructLiteral(typename.name, [
-                            (name, self.recursively_make_default_value(resolved_type, index_limit)) for name, resolved_type in sym.resolved_field_types.items()
+                            (name, self.global_make_default_value(resolved_type, index_limit)) for name, resolved_type in sym.resolved_field_types.items()
                         ])
                     elif isinstance(sym, InterfaceSymbol):
-                        raise StaticError.TypeMismatch(typename)
+                        return AST.NilLiteral()
                     elif (i < index_limit) and (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)):
                         raise StaticError.TypeMismatch(typename)
             raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
@@ -1060,13 +1070,13 @@ class StaticChecker(BaseVisitor):
 
         for i, sym in enumerate(self.global_declarations):
             if isinstance(sym, StructSymbol):
-                self.recursively_resolve_struct_definition(sym, i)
+                self.global_resolve_struct_definition(sym, i)
             elif isinstance(sym, InterfaceSymbol):
-                self.recursively_resolve_interface_definition(sym, i)
+                self.global_resolve_interface_definition(sym, i)
             elif isinstance(sym, FunctionSymbol):
                 # Cheap hack to filter out the prelude.
                 if isinstance(sym.original_ast, AST.FuncDecl):
-                    self.recursively_resolve_function_definition(sym, i)
+                    self.global_resolve_function_definition(sym, i)
             elif isinstance(sym, UnresolvedMethod):
                 struct_found = False
                 for maybe_struct in self.global_declarations:
@@ -1079,7 +1089,7 @@ class StaticChecker(BaseVisitor):
                             sym.struct_symbol = maybe_struct
                             struct_found = True
 
-                            self.recursively_resolve_method_definition(maybe_struct, sym.original_ast, i)
+                            self.global_resolve_method_definition(maybe_struct, sym.original_ast, i)
 
                             break
                         else:
@@ -1090,7 +1100,7 @@ class StaticChecker(BaseVisitor):
                     # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26053
                     raise StaticError.Undeclared(StaticError.Identifier(), sym.original_ast.recType.name)
             elif isinstance(sym, ConstantSymbol):
-                self.recursively_resolve_constant(sym, i)
+                self.global_resolve_constant(sym, i)
 
         my_scope = given_scope.copy()
 

@@ -152,19 +152,19 @@ fun foo () {
 #         input = Program([StructType("TIEN",[("Votien",IntType())],[]),MethodDecl("v",Id("TIEN"),FuncDecl("getInt",[],VoidType(),Block([ConstDecl("c",None,FieldAccess(Id("v"),"Votien")),VarDecl("d", None,FieldAccess(Id("v"),"tien"))])))])
 #         self.assertTrue(TestChecker.test(input, "Undeclared Field: tien\n", inspect.stack()[0].function))
 
-#     def test_016(self):
-#         """
-# type TIEN struct {
-#     Votien int;
-# }
-#
-# func (v TIEN) getInt () {
-#     v.getInt ();
-#     v.putInt ();
-# }
-#         """
-#         input = Program([StructType("TIEN",[("Votien",IntType())],[]),MethodDecl("v",Id("TIEN"),FuncDecl("getInt",[],VoidType(),Block([MethCall(Id("v"),"getInt",[]),MethCall(Id("v"),"putInt",[])])))])
-#         self.assertTrue(TestChecker.test(input, "Undeclared Method: putInt\n", inspect.stack()[0].function))
+    def test_016(self):
+        """
+type TIEN struct {
+    Votien int;
+}
+
+func (v TIEN) getInt () {
+    v.getInt ();
+    v.putInt ();
+}
+        """
+        input = Program([StructType("TIEN",[("Votien",IntType())],[]),MethodDecl("v",Id("TIEN"),FuncDecl("getInt",[],VoidType(),Block([MethCall(Id("v"),"getInt",[]),MethCall(Id("v"),"putInt",[])])))])
+        self.assertTrue(TestChecker.test(input, "Undeclared Method: putInt\n", inspect.stack()[0].function))
 
     def test_017(self):
         input = """
@@ -177,13 +177,13 @@ fun foo () {
 
     def test_018(self):
         input = """
-            func Q() {
-                const q = A{}.i + 2
-                a := [q]int{1, 2}
-                a := [2]int{3, 4}
-            }
+            const q = A{}.i + 2
+            const r = 1 + 1
             type A struct {
                 i int
+                b [r]int
             }
+            func F1() [q]int { return F2() }
+            func F2() [r]int {}
         """
         self.assertTrue(TestChecker.test(input, "", inspect.stack()[0].function))
