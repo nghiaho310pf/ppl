@@ -1226,8 +1226,7 @@ class StaticChecker(BaseVisitor):
         self.visit(ast.fun.body, my_scope + [current_function_scope_object])
 
     def visitPrototype(self, ast, param):
-        # TODO: complete this.
-        return None
+        pass # See global_resolve_interface_definition and visitProgram.
 
     def visitIntType(self, ast, param):
         return ast # Intentional.
@@ -1415,16 +1414,10 @@ class StaticChecker(BaseVisitor):
         self.visit(ast.loop, my_scope)
 
     def visitContinue(self, ast: AST.Continue, given_scope: List[ScopeObject]):
-        loop_visit = next(filter(lambda x: isinstance(x, IsLoopVisit), reversed(given_scope)), None)
-        if loop_visit is None:
-            # TODO: Ask prof. Phung about what to raise here.
-            raise StaticError.TypeMismatch(ast)
+        pass # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26303
 
     def visitBreak(self, ast: AST.Break, given_scope: List[ScopeObject]):
-        loop_visit = next(filter(lambda x: isinstance(x, IsLoopVisit), reversed(given_scope)), None)
-        if loop_visit is None:
-            # TODO: Ask prof. Phung about what to raise here.
-            raise StaticError.TypeMismatch(ast)
+        pass # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26303
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
         # Are we in a return?
