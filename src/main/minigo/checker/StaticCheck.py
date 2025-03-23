@@ -41,14 +41,20 @@ class StructSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.StructType):
         super().__init__(name)
         self.original_ast = original_ast
+
         self.resolved_field_types = dict[str, AST.Type]()
         self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
+
+        self.being_checked = False
 
 class InterfaceSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.InterfaceType):
         super().__init__(name)
         self.original_ast = original_ast
+
         self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
+
+        self.being_checked = False
 
 class FunctionSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.AST):
@@ -69,6 +75,7 @@ class ConstantSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.ConstDecl):
         super().__init__(name)
         self.original_ast = original_ast
+
         self.resolved_type = None
         self.resolved_value = None
 
@@ -134,7 +141,7 @@ class IsLoopVisit(ScopeObject):
         super().__init__()
 
 # # For making sure returns are in place in a function with a return type.
-# # Returns are confirmed to not require checks. I'm removing this check.
+# # Returns are confirmed to not require checks. I'm removing this mechanism since it does not hinder type-checking.
 # # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
 #
 # class ReturnBeacon(ScopeObject):
@@ -152,7 +159,16 @@ class NilType:
         pass
 
 class StaticChecker(BaseVisitor):
+    global_symbols: List[Symbol]
+
+    # Methods get special treatment; they modify other things.
+    # They are not const-friendly so they don't really need more processing.
+    methods: List[AST.MethodDecl]
+
     def __init__(self, root_ast):
+        self.global_symbols = []
+        self.methods = []
+
         self.root_ast = root_ast
 
     @staticmethod
@@ -173,7 +189,7 @@ class StaticChecker(BaseVisitor):
         return type(a) == type(b)
 
     @staticmethod
-    def can_cast_a_to_b(a: AST.Type, b: AST.Type, given_scope: List[ScopeObject]):
+    def local_can_cast_a_to_b(a: AST.Type, b: AST.Type, given_scope: List[ScopeObject]):
         # Allow going from nils to struct/interface instances.
         if isinstance(a, NilType) and isinstance(b, AST.Id):
             return True
@@ -225,7 +241,7 @@ class StaticChecker(BaseVisitor):
 
     # Just roll our own recursion here instead of using StaticChecker's cancerous visitor mechanism.
     @staticmethod
-    def comptime_evaluate(ast: AST.Expr, given_scope: List[ScopeObject]):
+    def local_comptime_evaluate(ast: AST.Expr, given_scope: List[ScopeObject]):
         if isinstance(ast, AST.Id):
             for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
                 if sym.name == ast.name:
@@ -252,7 +268,7 @@ class StaticChecker(BaseVisitor):
             raise StaticError.TypeMismatch(ast)
         elif isinstance(ast, AST.ArrayCell):
             # I guess we need to evaluate the entire thing.
-            receiver = StaticChecker.comptime_evaluate(ast.arr, given_scope)
+            receiver = StaticChecker.local_comptime_evaluate(ast.arr, given_scope)
             if not isinstance(receiver, AST.ArrayLiteral):
                 raise StaticError.TypeMismatch(ast)
 
@@ -262,7 +278,7 @@ class StaticChecker(BaseVisitor):
             for it in ast.idx:
                 if not isinstance(inner, list):
                     raise StaticError.TypeMismatch(ast)
-                e = StaticChecker.comptime_evaluate(it, given_scope)
+                e = StaticChecker.local_comptime_evaluate(it, given_scope)
                 if not isinstance(e, AST.IntLiteral):
                     raise StaticError.TypeMismatch(ast)
                 if e.value < 0 or e.value >= len(inner):
@@ -275,28 +291,26 @@ class StaticChecker(BaseVisitor):
                 return AST.ArrayLiteral(resulting_dimens, receiver.eleType, inner)
         elif isinstance(ast, AST.FieldAccess):
             # I guess we need to evaluate the entire thing.
-            receiver = StaticChecker.comptime_evaluate(ast.receiver, given_scope)
+            receiver = StaticChecker.local_comptime_evaluate(ast.receiver, given_scope)
             field = ast.field
             if not isinstance(receiver, AST.StructLiteral):
                 raise StaticError.TypeMismatch(ast)
 
             # Resolve the type.
             for maybe_struct in filter(lambda s: isinstance(s, Symbol), given_scope):
-                if isinstance(maybe_struct, StructSymbol):
-                    struct_found = False
-                    if maybe_struct.name == receiver.name:
+                if maybe_struct.name == receiver.name:
+                    if isinstance(maybe_struct, StructSymbol):
                         q: Tuple[str, AST.Expr] | None = next(filter(lambda t: t[0] == field, receiver.elements), None)
                         if q is None:
                             raise StaticError.Undeclared(StaticError.Field(), field)
-                        return StaticChecker.comptime_evaluate(q[1], given_scope)
-                    if not struct_found:
-                        # This should never happen; should already be caught by visitor pattern.
-                        raise StaticError.Undeclared(StaticError.Type(), receiver.name)
-                else:
-                    raise StaticError.TypeMismatch(ast)
+                        return StaticChecker.local_comptime_evaluate(q[1], given_scope)
+                    else:
+                        raise StaticError.TypeMismatch(ast)
+            # Never happens.
+            raise StaticError.Undeclared(StaticError.Identifier(), receiver.name)
         elif isinstance(ast, AST.BinaryOp):
-            lhs = StaticChecker.comptime_evaluate(ast.left, given_scope)
-            rhs = StaticChecker.comptime_evaluate(ast.right, given_scope)
+            lhs = StaticChecker.local_comptime_evaluate(ast.left, given_scope)
+            rhs = StaticChecker.local_comptime_evaluate(ast.right, given_scope)
             if ast.op == "+":
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value + rhs.value)
@@ -407,7 +421,7 @@ class StaticChecker(BaseVisitor):
             else:
                 raise StaticError.TypeMismatch(ast)
         elif isinstance(ast, AST.UnaryOp):
-            rhs = StaticChecker.comptime_evaluate(ast.body, given_scope)
+            rhs = StaticChecker.local_comptime_evaluate(ast.body, given_scope)
             if ast.op == "!":
                 if isinstance(rhs, AST.BooleanLiteral):
                     return AST.BooleanLiteral(not rhs.value)
@@ -442,109 +456,487 @@ class StaticChecker(BaseVisitor):
         else:
             for ele in ast:
                 this_ele_type = self.visit(ele + [IsExpressionVisit()], given_scope)
-                if not self.can_cast_a_to_b(this_ele_type, ele_type, given_scope):
+                if not self.local_can_cast_a_to_b(this_ele_type, ele_type, given_scope):
                     raise StaticError.TypeMismatch(ele)
+    #
+    # @staticmethod
+    # def create_global_functions():
+    #     get_int = FunctionSymbol("getInt", AST.Id("getInt"))
+    #     get_int.resolved_types.set_parameter_types([])
+    #     get_int.resolved_types.set_return_type(AST.IntType())
+    #
+    #     put_int = FunctionSymbol("putInt", AST.Id("putInt"))
+    #     put_int.resolved_types.set_parameter_types([AST.IntType()])
+    #     put_int.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     put_int_ln = FunctionSymbol("putIntLn", AST.Id("putIntLn"))
+    #     put_int_ln.resolved_types.set_parameter_types([AST.IntType()])
+    #     put_int_ln.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     get_float = FunctionSymbol("getFloat", AST.Id("getFloat"))
+    #     get_float.resolved_types.set_parameter_types([])
+    #     get_float.resolved_types.set_return_type(AST.FloatType())
+    #
+    #     put_float = FunctionSymbol("putFloat", AST.Id("putFloat"))
+    #     put_float.resolved_types.set_parameter_types([AST.FloatType()])
+    #     put_float.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     put_float_ln = FunctionSymbol("putFloatLn", AST.Id("putFloatLn"))
+    #     put_float_ln.resolved_types.set_parameter_types([AST.FloatType()])
+    #     put_float_ln.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     get_bool = FunctionSymbol("getBool", AST.Id("getBool"))
+    #     get_bool.resolved_types.set_parameter_types([])
+    #     get_bool.resolved_types.set_return_type(AST.BoolType())
+    #
+    #     put_bool = FunctionSymbol("putBool", AST.Id("putBool"))
+    #     put_bool.resolved_types.set_parameter_types([AST.BoolType()])
+    #     put_bool.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     put_bool_ln = FunctionSymbol("putBoolLn", AST.Id("putBoolLn"))
+    #     put_bool_ln.resolved_types.set_parameter_types([AST.BoolType()])
+    #     put_bool_ln.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     get_string = FunctionSymbol("getString", AST.Id("getString"))
+    #     get_string.resolved_types.set_parameter_types([])
+    #     get_string.resolved_types.set_return_type(AST.StringType())
+    #
+    #     put_string = FunctionSymbol("putString", AST.Id("putString"))
+    #     put_string.resolved_types.set_parameter_types([AST.StringType()])
+    #     put_string.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     put_string_ln = FunctionSymbol("putStringLn", AST.Id("putStringLn"))
+    #     put_string_ln.resolved_types.set_parameter_types([AST.StringType()])
+    #     put_string_ln.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     put_ln = FunctionSymbol("putLn", AST.Id("putLn"))
+    #     put_ln.resolved_types.set_parameter_types([])
+    #     put_ln.resolved_types.set_return_type(AST.VoidType())
+    #
+    #     return [
+    #         get_int,
+    #         put_int,
+    #         put_int_ln,
+    #         get_float,
+    #         put_float,
+    #         put_float_ln,
+    #         get_bool,
+    #         put_bool,
+    #         put_bool_ln,
+    #         get_string,
+    #         put_string,
+    #         put_string_ln,
+    #         put_ln,
+    #     ]
+
+    # Global things get their own set of functions because of complicated identifier dependencies.
+    # This might go away in a future refactor.
+    def global_can_cast_a_to_b(self, a: AST.Type, b: AST.Type, index_limit: int):
+        # Allow going from nils to struct/interface instances.
+        if isinstance(a, NilType) and isinstance(b, AST.Id):
+            return True
+
+        # Allow structs to be cast to interfaces.
+        if isinstance(a, AST.Id) and isinstance(b, AST.Id):
+            a_id: AST.Id = a
+            b_id: AST.Id = b
+            if a_id.name == b_id.name:
+                return True
+            maybe_source_struct: StructSymbol | None = next(filter(lambda x: isinstance(x, StructSymbol) and (x.name == a_id.name), self.global_symbols), None)
+            maybe_target_interface: InterfaceSymbol | None = next(filter(lambda x: isinstance(x, InterfaceSymbol) and (x.name == b_id.name), self.global_symbols), None)
+
+            if (maybe_source_struct is None) or (maybe_target_interface is None):
+                return False
+
+            has_mismatched_method = False
+            for interface_method_name, resolved_interface_method_types in maybe_target_interface.resolved_method_types.items():
+                matches = False
+                for struct_method_name, resolved_struct_method_types in maybe_source_struct.resolved_method_types.items():
+                    if interface_method_name == struct_method_name:
+                        return_type_matches = StaticChecker.hard_compare_types(resolved_struct_method_types.return_type, resolved_interface_method_types.return_type)
+                        param_types_match = len(resolved_struct_method_types.parameter_types) == len(resolved_interface_method_types.parameter_types)
+                        if param_types_match:
+                            for i, t in enumerate(resolved_struct_method_types.parameter_types):
+                                if not StaticChecker.hard_compare_types(t, resolved_interface_method_types.parameter_types[i]):
+                                    param_types_match = False
+                                    break
+
+                        matches = return_type_matches and param_types_match
+                if not matches:
+                    has_mismatched_method = True
+
+            return not has_mismatched_method
+
+        if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
+            if (not StaticChecker.hard_compare_types(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
+                return False
+            for i, dim in enumerate(a.dimens):
+                if not isinstance(dim, AST.IntLiteral):
+                    return False
+                other_dim = b.dimens[i]
+                if not isinstance(other_dim, AST.IntLiteral):
+                    return False
+                if dim.value != other_dim.value:
+                    return False
+
+        return type(a) == type(b)
+
+    def global_comptime_evaluate(self, ast: AST.Expr, index_limit: int):
+        if isinstance(ast, AST.Id):
+            for i, sym in enumerate(self.global_symbols):
+                if sym.name == ast.name:
+                    if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol) or isinstance(sym, FunctionSymbol) or isinstance(sym, VariableSymbol):
+                        raise StaticError.TypeMismatch(ast)
+                    elif (i < index_limit) and isinstance(sym, ConstantSymbol):
+                        self.recursively_resolve_constant(sym, index_limit)
+                        return sym.resolved_value
+            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+        elif isinstance(ast, AST.FuncCall) or isinstance(ast, AST.MethCall):
+            # Function calls are not allowed at compilation-time evaluation.
+            raise StaticError.TypeMismatch(ast)
+        elif isinstance(ast, AST.ArrayCell):
+            # I guess we need to evaluate the entire thing.
+            receiver = self.global_comptime_evaluate(ast.arr, index_limit)
+            if not isinstance(receiver, AST.ArrayLiteral):
+                raise StaticError.TypeMismatch(ast)
+
+            inner: AST.NestedList = receiver.value
+            resulting_dimens = receiver.dimens
+
+            for it in ast.idx:
+                if not isinstance(inner, list):
+                    raise StaticError.TypeMismatch(ast)
+                e = self.global_comptime_evaluate(it, index_limit)
+                if not isinstance(e, AST.IntLiteral):
+                    raise StaticError.TypeMismatch(ast)
+                if e.value < 0 or e.value >= len(inner):
+                    # TODO: Should this be caught only here or in the visitor pattern as well?
+                    raise StaticError.TypeMismatch(ast)
+                inner = inner[e.value]
+                resulting_dimens = resulting_dimens[:-1]
+
+            if isinstance(inner, list):
+                return AST.ArrayLiteral(resulting_dimens, receiver.eleType, inner)
+        elif isinstance(ast, AST.FieldAccess):
+            # I guess we need to evaluate the entire thing.
+            receiver = self.global_comptime_evaluate(ast.receiver, index_limit)
+            field = ast.field
+            if not isinstance(receiver, AST.StructLiteral):
+                raise StaticError.TypeMismatch(ast)
+
+            # Resolve the type.
+            for i, sym in enumerate(self.global_symbols):
+                if receiver.name == sym.name:
+                    if isinstance(sym, StructSymbol):
+                        q: Tuple[str, AST.Expr] | None = next(filter(lambda t: t[0] == field, receiver.elements), None)
+                        if q is None:
+                            raise StaticError.Undeclared(StaticError.Field(), field)
+                        return self.global_comptime_evaluate(q[1], index_limit)
+                    else:
+                        raise StaticError.TypeMismatch(ast)
+            # Never happens.
+            raise StaticError.Undeclared(StaticError.Identifier(), receiver.name)
+        elif isinstance(ast, AST.BinaryOp):
+            lhs = self.global_comptime_evaluate(ast.left, index_limit)
+            rhs = self.global_comptime_evaluate(ast.right, index_limit)
+            if ast.op == "+":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value + rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) + float(rhs.value))
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "-":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value - rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) - float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "*":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value * rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) * float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "/":
+                # TODO: Ask prof. Phung what to do when RHS is zero.
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(int(lhs.value / rhs.value))
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) / float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "%":
+                # TODO: Ask prof. Phung what to do when RHS is zero.
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(lhs.value % rhs.value)
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                    return AST.FloatLiteral(float(lhs.value) % float(rhs.value))
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == ">":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value > rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value > rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value > rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "<":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value < rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value < rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value < rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == ">=":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value >= rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value >= rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value >= rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "<=":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value <= rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value <= rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value <= rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "==":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value == rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value == rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value == rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "!=":
+                if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
+                    return AST.BooleanLiteral(lhs.value != rhs.value)
+                elif isinstance(lhs, AST.FloatLiteral) and isinstance(rhs, AST.FloatLiteral):
+                    return AST.BooleanLiteral(lhs.value != rhs.value)
+                elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+                    return AST.BooleanLiteral(lhs.value != rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "&&":
+                if isinstance(lhs, AST.BooleanLiteral) and isinstance(rhs, AST.BooleanLiteral):
+                    return AST.BooleanLiteral(lhs.value and rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "||":
+                if isinstance(lhs, AST.BooleanLiteral) and isinstance(rhs, AST.BooleanLiteral):
+                    return AST.BooleanLiteral(lhs.value or rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif isinstance(ast, AST.UnaryOp):
+            rhs = self.global_comptime_evaluate(ast.body, index_limit)
+            if ast.op == "!":
+                if isinstance(rhs, AST.BooleanLiteral):
+                    return AST.BooleanLiteral(not rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            elif ast.op == "-":
+                if isinstance(rhs, AST.IntLiteral):
+                    return AST.IntLiteral(-rhs.value)
+                elif isinstance(rhs, AST.FloatLiteral):
+                    return AST.FloatLiteral(-rhs.value)
+                else:
+                    raise StaticError.TypeMismatch(ast)
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif isinstance(ast, AST.StructLiteral):
+            for sym in self.global_symbols:
+                if sym.name == ast.name:
+                    if isinstance(sym, StructSymbol):
+                        if sym.being_checked:
+                            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+
+                        elements_ast: List[Tuple[str, AST.Expr]] = ast.elements
+
+                        for i, element in enumerate(elements_ast):
+                            field_name, field_value_ast = element
+                            for existing_field_name, existing_field_value in elements_ast[:i]:
+                                if field_name == existing_field_name:
+                                    raise StaticError.Redeclared(StaticError.Field(), field_name)
+
+                            if field_name not in sym.resolved_field_types:
+                                raise StaticError.Undeclared(StaticError.Field(), field_name)
+
+                            resolved_field_value = self.global_comptime_evaluate(field_value_ast, index_limit)
+                            resolved_field_value_type = self.type_of_literal(resolved_field_value)
+                            if not self.global_can_cast_a_to_b(resolved_field_value_type,
+                                                              sym.resolved_field_types[field_name],
+                                                              index_limit):
+                                raise StaticError.TypeMismatch(field_value_ast)
+
+                        initialized_field_names = [y[0] for y in elements_ast]
+                        uninitialized_field_names = filter(lambda x: x[0] not in initialized_field_names, sym.resolved_field_types.items())
+
+                        return AST.StructLiteral(ast.name, [
+                            (name, self.global_comptime_evaluate(val, index_limit)) for name, val in elements_ast
+                        ] + [
+                            (name, self.recursively_make_default_value(sym.resolved_field_types[name], index_limit)) for name in uninitialized_field_names
+                        ])
+                    else:
+                        raise StaticError.TypeMismatch(ast)
+            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+        else:
+            # Probably NilLiteral or ArrayLiteral.
+            return ast
 
     @staticmethod
-    def create_global_functions():
-        get_int = FunctionSymbol("getInt", AST.Id("getInt"))
-        get_int.resolved_types.set_parameter_types([])
-        get_int.resolved_types.set_return_type(AST.IntType())
+    def type_of_literal(ast: AST.Literal):
+        if isinstance(ast, AST.IntLiteral):
+            return AST.IntType()
+        elif isinstance(ast, AST.FloatLiteral):
+            return AST.FloatType()
+        elif isinstance(ast, AST.StringLiteral):
+            return AST.StringType()
+        elif isinstance(ast, AST.BooleanLiteral):
+            return AST.BoolType()
+        elif isinstance(ast, AST.ArrayLiteral):
+            return AST.ArrayType(ast.dimens, ast.eleType)
+        elif isinstance(ast, AST.StructLiteral):
+            return AST.Id(ast.name)
+        return NilType()
 
-        put_int = FunctionSymbol("putInt", AST.Id("putInt"))
-        put_int.resolved_types.set_parameter_types([AST.IntType()])
-        put_int.resolved_types.set_return_type(AST.VoidType())
+    def recursively_resolve_struct_definition(self, sym: StructSymbol, index_limit: int):
+        sym.being_checked = True
+        for i, element in enumerate(sym.original_ast.elements):
+            field_name, field_type = element
+            for existing_field_name, existing_field_type in sym.original_ast.elements[:i]:
+                if field_name == existing_field_name:
+                    raise StaticError.Redeclared(StaticError.Field(), element[0])
 
-        put_int_ln = FunctionSymbol("putIntLn", AST.Id("putIntLn"))
-        put_int_ln.resolved_types.set_parameter_types([AST.IntType()])
-        put_int_ln.resolved_types.set_return_type(AST.VoidType())
+            resolved_field_type = self.recursively_resolve_typename(field_type, index_limit)
+            sym.resolved_field_types[field_name] = resolved_field_type
+        sym.being_checked = False
+        return AST.Id(sym.name)
 
-        get_float = FunctionSymbol("getFloat", AST.Id("getFloat"))
-        get_float.resolved_types.set_parameter_types([])
-        get_float.resolved_types.set_return_type(AST.FloatType())
+    def recursively_resolve_interface_definition(self, sym: InterfaceSymbol, index_limit: int):
+        if sym.being_checked:
+            # Allow interfaces to have methods returning themselves.
+            return AST.Id(sym.name)
 
-        put_float = FunctionSymbol("putFloat", AST.Id("putFloat"))
-        put_float.resolved_types.set_parameter_types([AST.FloatType()])
-        put_float.resolved_types.set_return_type(AST.VoidType())
+        sym.being_checked = True
+        for prototype in sym.original_ast.methods:
+            if prototype.name in sym.resolved_method_types:
+                raise StaticError.Redeclared(StaticError.Prototype(), prototype.name)
 
-        put_float_ln = FunctionSymbol("putFloatLn", AST.Id("putFloatLn"))
-        put_float_ln.resolved_types.set_parameter_types([AST.FloatType()])
-        put_float_ln.resolved_types.set_return_type(AST.VoidType())
+            resolved_types = ResolvedFunctionTypes()
+            resolved_types.set_return_type(self.recursively_resolve_typename(prototype.retType, index_limit))
+            resolved_types.set_parameter_types([self.recursively_resolve_typename(it, index_limit) for it in prototype.params])
 
-        get_bool = FunctionSymbol("getBool", AST.Id("getBool"))
-        get_bool.resolved_types.set_parameter_types([])
-        get_bool.resolved_types.set_return_type(AST.BoolType())
+            sym.resolved_method_types[prototype.name] = resolved_types
+        sym.being_checked = False
+        return AST.Id(sym.name)
 
-        put_bool = FunctionSymbol("putBool", AST.Id("putBool"))
-        put_bool.resolved_types.set_parameter_types([AST.BoolType()])
-        put_bool.resolved_types.set_return_type(AST.VoidType())
+    def recursively_resolve_constant(self, sym: ConstantSymbol, index_limit: int):
+        sym.resolved_value = self.global_comptime_evaluate(sym.original_ast.iniExpr, index_limit)
+        sym.resolved_type = self.type_of_literal(sym.resolved_value)
+        if sym.original_ast.conType is not None:
+            explicit_type = self.recursively_resolve_typename(sym.original_ast.conType, index_limit)
+            if not self.global_can_cast_a_to_b(sym.resolved_type, explicit_type, index_limit):
+                raise StaticError.TypeMismatch(sym.original_ast.iniExpr)
 
-        put_bool_ln = FunctionSymbol("putBoolLn", AST.Id("putBoolLn"))
-        put_bool_ln.resolved_types.set_parameter_types([AST.BoolType()])
-        put_bool_ln.resolved_types.set_return_type(AST.VoidType())
+    def recursively_resolve_typename(self, typename: AST.Type, index_limit: int):
+        if isinstance(typename, AST.Id):
+            for i, sym in enumerate(self.global_symbols):
+                if sym.name == typename.name:
+                    if isinstance(sym, StructSymbol):
+                        if sym.being_checked:
+                            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+                        return self.recursively_resolve_struct_definition(sym, index_limit)
+                    elif isinstance(sym, InterfaceSymbol):
+                        return self.recursively_resolve_interface_definition(sym, index_limit)
+                    elif (i < index_limit) and (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)):
+                        raise StaticError.TypeMismatch(typename)
+            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+        elif isinstance(typename, AST.ArrayType):
+            dimensions = [self.global_comptime_evaluate(it, index_limit) for it in typename.dimens]
+            resolved_element_type = self.recursively_resolve_typename(typename.eleType, index_limit)
+            return AST.ArrayType(dimensions, resolved_element_type)
+        return typename
 
-        get_string = FunctionSymbol("getString", AST.Id("getString"))
-        get_string.resolved_types.set_parameter_types([])
-        get_string.resolved_types.set_return_type(AST.StringType())
-
-        put_string = FunctionSymbol("putString", AST.Id("putString"))
-        put_string.resolved_types.set_parameter_types([AST.StringType()])
-        put_string.resolved_types.set_return_type(AST.VoidType())
-
-        put_string_ln = FunctionSymbol("putStringLn", AST.Id("putStringLn"))
-        put_string_ln.resolved_types.set_parameter_types([AST.StringType()])
-        put_string_ln.resolved_types.set_return_type(AST.VoidType())
-
-        put_ln = FunctionSymbol("putLn", AST.Id("putLn"))
-        put_ln.resolved_types.set_parameter_types([])
-        put_ln.resolved_types.set_return_type(AST.VoidType())
-
-        return [
-            get_int,
-            put_int,
-            put_int_ln,
-            get_float,
-            put_float,
-            put_float_ln,
-            get_bool,
-            put_bool,
-            put_bool_ln,
-            get_string,
-            put_string,
-            put_string_ln,
-            put_ln,
-        ]
+    def recursively_make_default_value(self, typename: AST.Type, index_limit: int, make_nested_list: bool = False):
+        if isinstance(typename, AST.IntType):
+            return AST.IntLiteral(0)
+        elif isinstance(typename, AST.FloatType):
+            return AST.FloatLiteral(0.0)
+        elif isinstance(typename, AST.StringType):
+            return AST.StringLiteral("\"\"")
+        elif isinstance(typename, AST.BoolType):
+            return AST.BooleanLiteral(False)
+        elif isinstance(typename, AST.ArrayType):
+            # Sanity check.
+            d = typename.dimens[0]
+            if not isinstance(d, AST.IntLiteral):
+                raise StaticError.TypeMismatch(typename)
+            child_type = AST.ArrayType(typename.dimens[1:], typename.eleType) if len(typename.dimens) > 1 else typename.eleType
+            vals: AST.NestedList = [self.recursively_make_default_value(child_type, index_limit, True) for _ in range(d.value)]
+            if make_nested_list:
+                return vals
+            return AST.ArrayLiteral(typename.dimens, typename.eleType, vals)
+        elif isinstance(typename, AST.Id):
+            for i, sym in enumerate(self.global_symbols):
+                if sym.name == typename.name:
+                    if isinstance(sym, StructSymbol):
+                        if sym.being_checked:
+                            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+                        return AST.StructLiteral(typename.name, [
+                            (name, self.recursively_make_default_value(resolved_type, index_limit)) for name, resolved_type in sym.resolved_field_types.items()
+                        ])
+                    elif isinstance(sym, InterfaceSymbol):
+                        raise StaticError.TypeMismatch(typename)
+                    elif (i < index_limit) and (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)):
+                        raise StaticError.TypeMismatch(typename)
+            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+        return AST.NilLiteral()
 
     def check(self):
-        return self.visit(self.root_ast, self.create_global_functions())
+        # return self.visit(self.root_ast, self.create_global_functions())
+        return self.visit(self.root_ast, [])
 
-    def visitProgram(self, ast: AST.Program, given_scope: List[ScopeObject]):
-        my_scope: List[ScopeObject] = given_scope.copy()
+    def visitProgram(self, ast: AST.Program, _: List[ScopeObject]):
+        # my_scope: List[ScopeObject] = given_scope.copy()
 
         for thing in ast.decl:
             if isinstance(thing, AST.StructType):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
-                    if thing.name == existing_symbol.name:
+                for existing_unresolved_symbol in self.global_symbols:
+                    if thing.name == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
-                # visitStructType will return a StructSymbol.
-                my_scope.append(self.visit(thing, my_scope))
+                self.global_symbols.append(StructSymbol(thing.name, thing))
             elif isinstance(thing, AST.InterfaceType):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
-                    if thing.name == existing_symbol.name:
+                for existing_unresolved_symbol in self.global_symbols:
+                    if thing.name == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
-                # visitInterfaceType will return an InterfaceSymbol.
-                my_scope.append(self.visit(thing, my_scope))
+                self.global_symbols.append(InterfaceSymbol(thing.name, thing))
             elif isinstance(thing, AST.FuncDecl):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
-                    if thing.name == existing_symbol.name:
+                for existing_unresolved_symbol in self.global_symbols:
+                    if thing.name == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Function(), thing.name)
-                # Recursion may be used so we'll append it to scope first before visiting.
-                my_scope.append(FunctionSymbol(thing.name, thing))
-
-                # Parameter type and return type resolution is done in visitFuncDecl.
-                # It's dirty but it works.
-
-                self.visit(thing, my_scope)
+                self.global_symbols.append(FunctionSymbol(thing.name, thing))
             elif isinstance(thing, AST.MethodDecl):
                 receiver_type = thing.recType
 
@@ -553,51 +945,100 @@ class StaticChecker(BaseVisitor):
                     # TODO: do something about this?
                     raise StaticError.TypeMismatch(receiver_type)
 
-                struct_found = False
-                for maybe_struct in filter(lambda s: isinstance(s, Symbol), my_scope):
-                    if maybe_struct.name == receiver_type.name:
-                        if isinstance(maybe_struct, StructSymbol):
-                            for existing_method in maybe_struct.original_ast.methods:
-                                if existing_method.fun.name == thing.fun.name:
-                                    raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
-                            maybe_struct.original_ast.methods.append(thing)
-                            struct_found = True
-
-                            # Parameter type and return type resolution is done in visitFuncDecl/visitMethodDecl.
-                            # It's dirty but it works.
-
-                            # Recursion may be used so it's added to the struct first above.
-                            meth_obj = CurrentMethod(thing.fun.name, maybe_struct)
-                            self.visit(thing, my_scope + [meth_obj])
-
-                            break
-                        else:
-                            # TODO: Ask prof. Phung about what to raise here.
-                            raise StaticError.TypeMismatch(thing)
-                if not struct_found:
-                    # TODO: Ask prof. Phung about what to raise here.
-                    # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26053
-                    raise StaticError.Undeclared(StaticError.Type(), receiver_type.name)
+                self.global_symbols.append(thing)
             elif isinstance(thing, AST.VarDecl):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
-                    if thing.varName == existing_symbol.name:
+                for existing_unresolved_symbol in self.global_symbols:
+                    if thing.varName == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Variable(), thing.varName)
-                resolved_type = self.visit(thing, my_scope)
-                sym = VariableSymbol(thing.varName, thing)
-                sym.set_type(resolved_type)
-                my_scope.append(sym)
+                self.global_symbols.append(VariableSymbol(thing.varName, thing))
             elif isinstance(thing, AST.ConstDecl):
-                for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
-                    if thing.conName == existing_symbol.name:
+                for existing_unresolved_symbol in self.global_symbols:
+                    if thing.conName == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Constant(), thing.conName)
-                resolved_type = self.visit(thing, my_scope)
-                resolved_value = self.comptime_evaluate(thing.iniExpr, my_scope) if (thing.iniExpr is not None) else None
-                sym = ConstantSymbol(thing.conName, thing)
-                sym.set_type(resolved_type)
-                sym.set_value(resolved_value)
-                my_scope.append(sym)
+                self.global_symbols.append(ConstantSymbol(thing.conName, thing))
 
-        # TODO: do we return anything? Ask prof. Phung.
+        # Now we need to make consts, structs and interfaces known.
+        # Variables can stay benched until later.
+
+
+
+        # for thing in ast.decl:
+        #     if isinstance(thing, AST.StructType):
+        #         for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
+        #             if thing.name == existing_symbol.name:
+        #                 raise StaticError.Redeclared(StaticError.Type(), thing.name)
+        #         # visitStructType will return a StructSymbol.
+        #         my_scope.append(self.visit(thing, my_scope))
+        #     elif isinstance(thing, AST.InterfaceType):
+        #         for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
+        #             if thing.name == existing_symbol.name:
+        #                 raise StaticError.Redeclared(StaticError.Type(), thing.name)
+        #         # visitInterfaceType will return an InterfaceSymbol.
+        #         my_scope.append(self.visit(thing, my_scope))
+        #     elif isinstance(thing, AST.FuncDecl):
+        #         for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
+        #             if thing.name == existing_symbol.name:
+        #                 raise StaticError.Redeclared(StaticError.Function(), thing.name)
+        #         # Recursion may be used so we'll append it to scope first before visiting.
+        #         my_scope.append(FunctionSymbol(thing.name, thing))
+        #
+        #         # Parameter type and return type resolution is done in visitFuncDecl.
+        #         # It's dirty but it works.
+        #
+        #         self.visit(thing, my_scope)
+        #     elif isinstance(thing, AST.MethodDecl):
+        #         receiver_type = thing.recType
+        #
+        #         # Preventative hack-fix for ASTGeneration.py/AST.py flaw.
+        #         if not isinstance(receiver_type, AST.Id):
+        #             # TODO: do something about this?
+        #             raise StaticError.TypeMismatch(receiver_type)
+        #
+        #         struct_found = False
+        #         for maybe_struct in filter(lambda s: isinstance(s, Symbol), my_scope):
+        #             if maybe_struct.name == receiver_type.name:
+        #                 if isinstance(maybe_struct, StructSymbol):
+        #                     for existing_method in maybe_struct.original_ast.methods:
+        #                         if existing_method.fun.name == thing.fun.name:
+        #                             raise StaticError.Redeclared(StaticError.Method(), thing.fun.name)
+        #                     maybe_struct.original_ast.methods.append(thing)
+        #                     struct_found = True
+        #
+        #                     # Parameter type and return type resolution is done in visitFuncDecl/visitMethodDecl.
+        #                     # It's dirty but it works.
+        #
+        #                     # Recursion may be used so it's added to the struct first above.
+        #                     meth_obj = CurrentMethod(thing.fun.name, maybe_struct)
+        #                     self.visit(thing, my_scope + [meth_obj])
+        #
+        #                     break
+        #                 else:
+        #                     # TODO: Ask prof. Phung about what to raise here.
+        #                     raise StaticError.TypeMismatch(thing)
+        #         if not struct_found:
+        #             # TODO: Seems it doesn't matter what is being raised here.
+        #             # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26053
+        #             raise StaticError.Undeclared(StaticError.Identifier(), receiver_type.name)
+        #     elif isinstance(thing, AST.VarDecl):
+        #         for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
+        #             if thing.varName == existing_symbol.name:
+        #                 raise StaticError.Redeclared(StaticError.Variable(), thing.varName)
+        #         resolved_type = self.visit(thing, my_scope)
+        #         sym = VariableSymbol(thing.varName, thing)
+        #         sym.set_type(resolved_type)
+        #         my_scope.append(sym)
+        #     elif isinstance(thing, AST.ConstDecl):
+        #         for existing_symbol in filter(lambda x: isinstance(x, Symbol), my_scope):
+        #             if thing.conName == existing_symbol.name:
+        #                 raise StaticError.Redeclared(StaticError.Constant(), thing.conName)
+        #         resolved_type = self.visit(thing, my_scope)
+        #         resolved_value = self.comptime_evaluate(thing.iniExpr, my_scope) if (thing.iniExpr is not None) else None
+        #         sym = ConstantSymbol(thing.conName, thing)
+        #         sym.set_type(resolved_type)
+        #         sym.set_value(resolved_value)
+        #         my_scope.append(sym)
+        #
+        # # TODO: do we return anything? Ask prof. Phung.
 
     def visitVarDecl(self, ast: AST.VarDecl, given_scope: List[ScopeObject]):
         # We don't check name dupes; that's done by the outer layer.
@@ -609,7 +1050,7 @@ class StaticChecker(BaseVisitor):
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
-        if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
+        if (explicit_type is not None) and (implicit_type is not None) and (not self.local_can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
             # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
@@ -628,7 +1069,7 @@ class StaticChecker(BaseVisitor):
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
             # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
-        if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
+        if (explicit_type is not None) and (implicit_type is not None) and (not self.local_can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
             # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
@@ -744,10 +1185,20 @@ class StaticChecker(BaseVisitor):
 
     def visitArrayType(self, ast: AST.ArrayType, given_scope: List[ScopeObject]):
         # Evaluate indices so we can type-check.
-        return AST.ArrayType([self.comptime_evaluate(it, given_scope) for it in ast.dimens], ast.eleType)
+        return AST.ArrayType([self.local_comptime_evaluate(it, given_scope) for it in ast.dimens], ast.eleType)
 
     def visitStructType(self, ast: AST.StructType, given_scope: List[ScopeObject]):
-        self_sym = StructSymbol(ast.name, ast)
+        # This is ugly.
+        if len(given_scope) < 1:
+            # !!??!!!??
+            raise StaticError.TypeMismatch(ast)
+
+        self_sym = given_scope[-1]
+        # Sanity checks.
+        if not isinstance(self_sym, StructSymbol):
+            raise StaticError.TypeMismatch(ast)
+        if self_sym.name != ast.name:
+            raise StaticError.TypeMismatch(ast)
 
         for i, element in enumerate(ast.elements):
             field_name, field_type = element
@@ -757,10 +1208,30 @@ class StaticChecker(BaseVisitor):
             resolved_field_type = self.visit(field_type, given_scope + [IsTypenameVisit()])
             self_sym.resolved_field_types[field_name] = resolved_field_type
 
-        return self_sym
+        # self_sym = StructSymbol(ast.name, ast)
+        #
+        # for i, element in enumerate(ast.elements):
+        #     field_name, field_type = element
+        #     for existing_field_name, existing_field_type in ast.elements[:i]:
+        #         if field_name == existing_field_name:
+        #             raise StaticError.Redeclared(StaticError.Field(), element[0])
+        #     resolved_field_type = self.visit(field_type, given_scope + [IsTypenameVisit()])
+        #     self_sym.resolved_field_types[field_name] = resolved_field_type
+        #
+        # return self_sym
 
     def visitInterfaceType(self, ast: AST.InterfaceType, given_scope: List[ScopeObject]):
-        self_sym = InterfaceSymbol(ast.name, ast)
+        # This is ugly.
+        if len(given_scope) < 1:
+            # !!??!!!??
+            raise StaticError.TypeMismatch(ast)
+
+        self_sym = given_scope[-1]
+        # Sanity checks.
+        if not isinstance(self_sym, InterfaceSymbol):
+            raise StaticError.TypeMismatch(ast)
+        if self_sym.name != ast.name:
+            raise StaticError.TypeMismatch(ast)
 
         for i, prototype in enumerate(ast.methods):
             for existing_prototype in ast.methods[:i]:
@@ -773,7 +1244,20 @@ class StaticChecker(BaseVisitor):
 
             self_sym.resolved_method_types[prototype.name] = resolved_types
 
-        return self_sym
+        # self_sym = InterfaceSymbol(ast.name, ast)
+        #
+        # for i, prototype in enumerate(ast.methods):
+        #     for existing_prototype in ast.methods[:i]:
+        #         if prototype.name == existing_prototype.name:
+        #             raise StaticError.Redeclared(StaticError.Prototype(), prototype.name)
+        #
+        #     resolved_types = ResolvedFunctionTypes()
+        #     resolved_types.set_return_type(self.visit(prototype.retType, given_scope + [IsTypenameVisit()]))
+        #     resolved_types.set_parameter_types([self.visit(it, given_scope + [IsTypenameVisit()]) for it in prototype.params])
+        #
+        #     self_sym.resolved_method_types[prototype.name] = resolved_types
+        #
+        # return self_sym
 
     def visitBlock(self, ast: AST.Block, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
@@ -797,7 +1281,7 @@ class StaticChecker(BaseVisitor):
 
                 sym = ConstantSymbol(statement.conName, statement)
                 resolved_type = self.visit(statement, my_scope)
-                resolved_value = self.comptime_evaluate(statement.iniExpr, my_scope) if (statement.iniExpr is not None) else None
+                resolved_value = self.local_comptime_evaluate(statement.iniExpr, my_scope) if (statement.iniExpr is not None) else None
                 sym.set_type(resolved_type)
                 sym.set_value(resolved_value)
                 my_scope.append(sym)
@@ -837,7 +1321,7 @@ class StaticChecker(BaseVisitor):
     def visitAssign(self, ast: AST.Assign, given_scope: List[ScopeObject]):
         lhs_type = self.visit(ast.lhs, given_scope + [IsExpressionVisit(), IsLeftHandSideVisit()])
         rhs_type = self.visit(ast.rhs, given_scope + [IsExpressionVisit()])
-        if not self.can_cast_a_to_b(rhs_type, lhs_type, given_scope):
+        if not self.local_can_cast_a_to_b(rhs_type, lhs_type, given_scope):
             raise StaticError.TypeMismatch(ast)
         # Return nothing, I guess.
 
@@ -980,7 +1464,7 @@ class StaticChecker(BaseVisitor):
             if ast.expr is None:
                 raise StaticError.TypeMismatch(ast)
             expr_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
-            if not self.can_cast_a_to_b(expr_type, current_function.resolved_types.return_type, given_scope):
+            if not self.local_can_cast_a_to_b(expr_type, current_function.resolved_types.return_type, given_scope):
                 raise StaticError.TypeMismatch(ast)
 
     def visitBinaryOp(self, ast: AST.BinaryOp, given_scope: List[ScopeObject]):
@@ -1059,7 +1543,7 @@ class StaticChecker(BaseVisitor):
                         # No need to append IsExpressionVisit (we're already in one.)
                         # TODO: add a sanity check for that.
                         arg_type = self.visit(arg, given_scope)
-                        if not self.can_cast_a_to_b(arg_type, sym.resolved_types.parameter_types[i], given_scope):
+                        if not self.local_can_cast_a_to_b(arg_type, sym.resolved_types.parameter_types[i], given_scope):
                             raise StaticError.TypeMismatch(ast)
 
                     return sym.resolved_types.return_type
@@ -1091,7 +1575,7 @@ class StaticChecker(BaseVisitor):
                                     # No need to append IsExpressionVisit (we're already in one.)
                                     # TODO: add a sanity check for that.
                                     arg_type = self.visit(arg, given_scope)
-                                    if not self.can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i], given_scope):
+                                    if not self.local_can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i], given_scope):
                                         raise StaticError.TypeMismatch(ast)
 
                                 return resolved_method_types.return_type
@@ -1113,7 +1597,7 @@ class StaticChecker(BaseVisitor):
                                     # No need to append IsExpressionVisit (we're already in one.)
                                     # TODO: add a sanity check for that
                                     arg_type = self.visit(arg, given_scope)
-                                    if not self.can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i], given_scope):
+                                    if not self.local_can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i], given_scope):
                                         raise StaticError.TypeMismatch(ast)
 
                                 return resolved_method_types.return_type
@@ -1197,7 +1681,7 @@ class StaticChecker(BaseVisitor):
         return AST.StringType()
 
     def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[ScopeObject]):
-        dimens = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
+        dimens = [self.local_comptime_evaluate(it, given_scope) for it in ast.dimens]
         # TODO: is the IsTypenameVisit() instance useless here?
         ele_type = self.visit(ast.eleType, given_scope + [IsTypenameVisit()])
         self.check_nested_list(ast, ast.value, ele_type, dimens, given_scope)
@@ -1226,13 +1710,8 @@ class StaticChecker(BaseVisitor):
                 raise StaticError.Undeclared(StaticError.Field(), field_name)
 
             field_initializer_type = self.visit(field_value, given_scope + [IsExpressionVisit()])
-            if not self.can_cast_a_to_b(field_initializer_type, struct_sym.resolved_field_types[field_name], given_scope):
+            if not self.local_can_cast_a_to_b(field_initializer_type, struct_sym.resolved_field_types[field_name], given_scope):
                 raise StaticError.TypeMismatch(field_value)
-
-        if len(ast.elements) != len(struct_sym.original_ast.elements):
-            # TODO: Ask prof. Phung what to raise here.
-            first_uninitialized_field_name = next(filter(lambda x: x[0] not in [y[0] for y in ast.elements], struct_sym.original_ast.elements), None)
-            raise StaticError.Undeclared(StaticError.Field(), first_uninitialized_field_name[0])
 
         return AST.Id(ast.name)
 
