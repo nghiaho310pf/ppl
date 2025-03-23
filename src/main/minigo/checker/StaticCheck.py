@@ -8,6 +8,13 @@ from Visitor import *
 from typing import List, Tuple
 import StaticError
 
+class InternalError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+
+    def __str__(self):
+        return f"Internal checker error: {self.message}"
+
 # Just use classes, man.
 # For scope state.
 
@@ -247,7 +254,7 @@ class StaticChecker(BaseVisitor):
             # Sanity check.
             d = typename.dimens[0]
             if not isinstance(d, AST.IntLiteral):
-                raise StaticError.TypeMismatch(typename)
+                raise InternalError(f"StaticChecker::local_make_default_value: Given array typename with dimension not of type AST.IntLiteral ({typename})")
             child_type = AST.ArrayType(typename.dimens[1:], typename.eleType) if len(typename.dimens) > 1 else typename.eleType
             vals: AST.NestedList = [StaticChecker.local_make_default_value(child_type, given_scope, True) for _ in range(d.value)]
             if make_nested_list:
@@ -1007,7 +1014,7 @@ class StaticChecker(BaseVisitor):
             # Sanity check.
             d = typename.dimens[0]
             if not isinstance(d, AST.IntLiteral):
-                raise StaticError.TypeMismatch(typename)
+                raise InternalError(f"StaticChecker::global_make_default_value: Given array typename with dimension not of type AST.IntLiteral ({typename})")
             child_type = AST.ArrayType(typename.dimens[1:], typename.eleType) if len(typename.dimens) > 1 else typename.eleType
             vals: AST.NestedList = [self.global_make_default_value(child_type, index_limit, True) for _ in range(d.value)]
             if make_nested_list:
@@ -1054,7 +1061,7 @@ class StaticChecker(BaseVisitor):
 
                 # Preventative check for ASTGeneration.py/AST.py flaw.
                 if not isinstance(receiver_type, AST.Id):
-                    raise StaticError.TypeMismatch(receiver_type)
+                    raise InternalError(f"StaticChecker::visitProgram: Method with receiver type not of type AST.Id ({receiver_type})")
 
                 self.global_declarations.append(UnresolvedMethod(thing))
             elif isinstance(thing, AST.ConstDecl):
@@ -1114,14 +1121,14 @@ class StaticChecker(BaseVisitor):
 
         for sym in self.global_declarations:
             if isinstance(sym, StructSymbol):
-                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
+                self.visit(sym.original_ast, my_scope)
             elif isinstance(sym, InterfaceSymbol):
-                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
+                self.visit(sym.original_ast, my_scope)
             # Cheap hack to filter out the prelude.
             elif isinstance(sym, FunctionSymbol) and isinstance(sym.original_ast, AST.FuncDecl):
-                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
+                self.visit(sym.original_ast, my_scope)
             elif isinstance(sym, UnresolvedMethod):
-                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
+                self.visit(sym.original_ast, my_scope + [sym])
             elif isinstance(sym, ConstantSymbol):
                 self.visit(sym.original_ast, my_scope)
                 my_scope.append(sym)
@@ -1137,17 +1144,17 @@ class StaticChecker(BaseVisitor):
 
         explicit_type: AST.Type | None = self.visit(ast.varType, given_scope + [IsTypenameVisit()]) if (ast.varType is not None) else None
         implicit_type: AST.Type | None = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if (ast.varInit is not None) else None
+
         # No voids allowed.
-        if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
-            # TODO: Ask prof. Phung about what to raise here.
-            raise StaticError.TypeMismatch(ast)
+        if isinstance(implicit_type, AST.VoidType):
+            raise StaticError.TypeMismatch(ast.varInit)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.local_can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
-            # TODO: Ask prof. Phung about what to raise here.
-            raise StaticError.TypeMismatch(ast)
+            raise StaticError.TypeMismatch(ast.varInit)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
-            # TODO: Ask prof. Phung what to raise here.
-            raise StaticError.TypeMismatch(ast)
+            # Whatever is raised here doesn't matter.
+            # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26184
+            raise StaticError.TypeMismatch(ast.varInit)
 
         return implicit_type if implicit_type is not None else explicit_type
 
@@ -1157,35 +1164,25 @@ class StaticChecker(BaseVisitor):
         implicit_type: AST.Type | None = self.visit(ast.iniExpr, given_scope + [IsComptimeExpressionVisit(), IsExpressionVisit()]) if (ast.iniExpr is not None) else None
 
         # No voids allowed.
-        if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
-            # TODO: Ask prof. Phung about what to raise here.
-            raise StaticError.TypeMismatch(ast)
+        if isinstance(implicit_type, AST.VoidType):
+            raise StaticError.TypeMismatch(ast.iniExpr)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.local_can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
-            # TODO: Ask prof. Phung about what to raise here.
-            raise StaticError.TypeMismatch(ast)
+            raise StaticError.TypeMismatch(ast.iniExpr)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
-            # TODO: Ask prof. Phung what to raise here.
-            raise StaticError.TypeMismatch(ast)
+            # Whatever is raised here doesn't matter.
+            # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26184
+            raise StaticError.TypeMismatch(ast.iniExpr)
 
         return implicit_type if implicit_type is not None else explicit_type
 
     def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[ScopeObject]):
-        # This might be the ugliest part of the entire file to be quite honest.
-        if len(given_scope) < 1:
-            # !!??!!!??
-            raise StaticError.TypeMismatch(ast)
+        self_sym: FunctionSymbol | None = next(filter(lambda x: isinstance(x, FunctionSymbol) and (x.original_ast == ast), reversed(given_scope)), None)
+        # Sanity check.
+        if self_sym is None:
+            raise InternalError("StaticCheck::visitFuncDecl: FunctionSymbol for AST not present during its own visit")
 
-        self_sym = given_scope[-1]
-        # Sanity checks.
-        if not isinstance(self_sym, FunctionSymbol):
-            raise StaticError.TypeMismatch(ast)
-        if self_sym.name != ast.name:
-            raise StaticError.TypeMismatch(ast)
         my_scope = given_scope.copy()
-
-        # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces
-        # and functions.
         for i, param in enumerate(ast.params):
             for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), my_scope):
                 if existing_param.name == param.parName:
@@ -1196,17 +1193,10 @@ class StaticChecker(BaseVisitor):
         self.visit(ast.body, my_scope + [current_function_scope_object])
 
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[ScopeObject]):
-        # This might be the 2nd ugliest part of the entire file to be quite honest.
-        if len(given_scope) < 1:
-            # !!??!!!??
-            raise StaticError.TypeMismatch(ast)
-
-        self_sym = given_scope[-1]
-        # Sanity checks.
-        if not isinstance(self_sym, UnresolvedMethod):
-            raise StaticError.TypeMismatch(ast)
-        if self_sym.original_ast != ast:
-            raise StaticError.TypeMismatch(ast)
+        self_sym: UnresolvedMethod | None = next(filter(lambda x: isinstance(x, UnresolvedMethod) and (x.original_ast == ast), reversed(given_scope)), None)
+        # Sanity check.
+        if self_sym is None:
+            raise InternalError("StaticCheck::visitMethodDecl: UnresolvedMethod for AST not present during its own visit")
 
         # I guess treating the receiver as a parameter symbol is fine for now. It shouldn't interfere with the stuff
         # below which is almost straight-copied from visitFuncDecl.
@@ -1214,8 +1204,6 @@ class StaticChecker(BaseVisitor):
 
         resolved_types = self_sym.struct_symbol.resolved_method_types[ast.fun.name]
 
-        # Parameters cannot repeat names within themselves, but they can shadow global variables, structs, interfaces
-        # and functions.
         for i, param in enumerate(ast.fun.params):
             for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), my_scope):
                 if existing_param.name == param.parName:
@@ -1248,28 +1236,10 @@ class StaticChecker(BaseVisitor):
         return AST.ArrayType([self.local_comptime_evaluate(it, given_scope) for it in ast.dimens], ast.eleType)
 
     def visitStructType(self, ast: AST.StructType, given_scope: List[ScopeObject]):
-        # This is ugly.
-        if len(given_scope) < 1:
-            # !!??!!!??
-            raise StaticError.TypeMismatch(ast)
-
-        self_sym = given_scope[-1]
-        # Sanity checks.
-        if not isinstance(self_sym, StructSymbol):
-            raise StaticError.TypeMismatch(ast)
-        if self_sym.name != ast.name:
-            raise StaticError.TypeMismatch(ast)
-
-        for i, element in enumerate(ast.elements):
-            field_name, field_type = element
-            for existing_field_name, existing_field_type in ast.elements[:i]:
-                if field_name == existing_field_name:
-                    raise StaticError.Redeclared(StaticError.Field(), element[0])
-            resolved_field_type = self.visit(field_type, given_scope + [IsTypenameVisit()])
-            self_sym.resolved_field_types[field_name] = resolved_field_type
+        pass # See global_resolve_struct_definition.
 
     def visitInterfaceType(self, ast: AST.InterfaceType, given_scope: List[ScopeObject]):
-        pass # See recursively_resolve_interface_definition.
+        pass # See global_resolve_interface_definition.
 
     def visitBlock(self, ast: AST.Block, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
