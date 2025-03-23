@@ -133,15 +133,17 @@ class IsLoopVisit(ScopeObject):
     def __init__(self):
         super().__init__()
 
-# For making sure returns are in place in a function with a return type.
-
-class ReturnBeacon(ScopeObject):
-    def __init__(self):
-        super().__init__()
-        self.has_return = False
-
-    def set_has_return(self):
-        self.has_return = True
+# # For making sure returns are in place in a function with a return type.
+# # Returns are confirmed to not require checks. I'm removing this check.
+# # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
+#
+# class ReturnBeacon(ScopeObject):
+#     def __init__(self):
+#         super().__init__()
+#         self.has_return = False
+#
+#     def set_has_return(self):
+#         self.has_return = True
 
 # Special nil type.
 
@@ -229,17 +231,17 @@ class StaticChecker(BaseVisitor):
                 if sym.name == ast.name:
                     if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
                         # I guess we don't allow bare-referring to structs and interfaces?
-                        # TODO: ask Phung about this.
+                        # TODO: ask prof. Phung about this.
                         raise StaticError.TypeMismatch(ast)
                     elif isinstance(sym, FunctionSymbol):
                         # I guess we don't allow bare-referring to functions?
-                        # TODO: ask Phung about this.
+                        # TODO: ask prof. Phung about this.
                         raise StaticError.TypeMismatch(ast)
                     elif isinstance(sym, ConstantSymbol):
                         return sym.resolved_value
                     elif isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
                         # Referencing other variables/parameters isn't allowed in constants.
-                        # TODO: ask Phung about what error to raise here.
+                        # TODO: ask prof. Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
                     else:
                         # TODO: raise an unreachable case being reached.
@@ -321,7 +323,7 @@ class StaticChecker(BaseVisitor):
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == "/":
-                # TODO: Ask Phung what to do when RHS is zero.
+                # TODO: Ask prof. Phung what to do when RHS is zero.
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(int(lhs.value / rhs.value))
                 elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
@@ -330,7 +332,7 @@ class StaticChecker(BaseVisitor):
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == "%":
-                # TODO: Ask Phung what to do when RHS is zero.
+                # TODO: Ask prof. Phung what to do when RHS is zero.
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value % rhs.value)
                 elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
@@ -432,7 +434,7 @@ class StaticChecker(BaseVisitor):
             # TODO: should this be raised here or upstream?
             raise StaticError.TypeMismatch(original_ast)
         if len(ast) != this_dimen.value:
-            # TODO: Ask Phung about what to raise here.
+            # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(original_ast)
         if len(dimens) > 1:
             for sublist in ast:
@@ -570,10 +572,10 @@ class StaticChecker(BaseVisitor):
 
                             break
                         else:
-                            # TODO: Ask Phung about what to raise here.
+                            # TODO: Ask prof. Phung about what to raise here.
                             raise StaticError.TypeMismatch(thing)
                 if not struct_found:
-                    # TODO: Ask Phung about what to raise here.
+                    # TODO: Ask prof. Phung about what to raise here.
                     # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26053
                     raise StaticError.Undeclared(StaticError.Type(), receiver_type.name)
             elif isinstance(thing, AST.VarDecl):
@@ -595,7 +597,7 @@ class StaticChecker(BaseVisitor):
                 sym.set_value(resolved_value)
                 my_scope.append(sym)
 
-        # TODO: do we return anything? Ask Phung.
+        # TODO: do we return anything? Ask prof. Phung.
 
     def visitVarDecl(self, ast: AST.VarDecl, given_scope: List[ScopeObject]):
         # We don't check name dupes; that's done by the outer layer.
@@ -605,14 +607,14 @@ class StaticChecker(BaseVisitor):
         implicit_type: AST.Type | None = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if (ast.varInit is not None) else None
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
-            # TODO: Ask Phung about what to raise here.
+            # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
-            # TODO: Ask Phung about what to raise here.
+            # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
-            # TODO: Ask Phung what to raise here.
+            # TODO: Ask prof. Phung what to raise here.
             raise StaticError.TypeMismatch(ast)
 
         return implicit_type if implicit_type is not None else explicit_type
@@ -624,14 +626,14 @@ class StaticChecker(BaseVisitor):
 
         # No voids allowed.
         if isinstance(explicit_type, AST.VoidType) or isinstance(implicit_type, AST.VoidType):
-            # TODO: Ask Phung about what to raise here.
+            # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type, given_scope)):
-            # TODO: Ask Phung about what to raise here.
+            # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
-            # TODO: Ask Phung what to raise here.
+            # TODO: Ask prof. Phung what to raise here.
             raise StaticError.TypeMismatch(ast)
 
         return implicit_type if implicit_type is not None else explicit_type
@@ -663,13 +665,17 @@ class StaticChecker(BaseVisitor):
         self_sym.resolved_types.set_parameter_types(param_types)
         self_sym.resolved_types.set_return_type(self.visit(ast.retType, my_scope + [IsTypenameVisit()]))
 
-        current_function_scope_object = CurrentFunction(self_sym.resolved_types)
-        return_beacon = ReturnBeacon()
-        self.visit(ast.body, my_scope + [current_function_scope_object, return_beacon])
+        # current_function_scope_object = CurrentFunction(self_sym.resolved_types)
+        # return_beacon = ReturnBeacon()
+        # self.visit(ast.body, my_scope + [current_function_scope_object, return_beacon])
+        #
+        # if (not isinstance(self_sym.resolved_types.return_type, AST.VoidType)) and (not return_beacon.has_return):
+        #     # TODO: Ask prof. Phung what to raise here.
+        #     raise StaticError.TypeMismatch(ast)
 
-        if (not isinstance(self_sym.resolved_types.return_type, AST.VoidType)) and (not return_beacon.has_return):
-            # TODO: Ask Phung what to raise here.
-            raise StaticError.TypeMismatch(ast)
+        # Return presence is not checked.
+        current_function_scope_object = CurrentFunction(self_sym.resolved_types)
+        self.visit(ast.body, my_scope + [current_function_scope_object])
 
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[ScopeObject]):
         # This might be the 2nd ugliest part of the entire file to be quite honest.
@@ -705,13 +711,17 @@ class StaticChecker(BaseVisitor):
 
         self_sym.struct_symbol.resolved_method_types[ast.fun.name] = resolved_types
 
-        current_function_scope_object = CurrentFunction(resolved_types)
-        return_beacon = ReturnBeacon()
-        self.visit(ast.fun.body, my_scope + [current_function_scope_object, return_beacon])
+        # current_function_scope_object = CurrentFunction(resolved_types)
+        # return_beacon = ReturnBeacon()
+        # self.visit(ast.fun.body, my_scope + [current_function_scope_object, return_beacon])
+        #
+        # if (not isinstance(self_sym.resolved_types.return_type, AST.VoidType)) and (not return_beacon.has_return):
+        #     # TODO: Ask prof. Phung what to raise here.
+        #     raise StaticError.TypeMismatch(ast)
 
-        if (not isinstance(self_sym.resolved_types.return_type, AST.VoidType)) and (not return_beacon.has_return):
-            # TODO: Ask Phung what to raise here.
-            raise StaticError.TypeMismatch(ast)
+        # Return presence is not checked.
+        current_function_scope_object = CurrentFunction(resolved_types)
+        self.visit(ast.fun.body, my_scope + [current_function_scope_object])
 
     def visitPrototype(self, ast, param):
         # TODO: complete this.
@@ -793,7 +803,7 @@ class StaticChecker(BaseVisitor):
                 my_scope.append(sym)
             elif isinstance(statement, AST.Expr):
                 expr_type = self.visit(statement, my_scope + [IsExpressionVisit()])
-                # I guess Phung doesn't want any code to discard any values.
+                # I guess prof. Phung doesn't want any code to discard any values.
                 if not isinstance(expr_type, AST.VoidType):
                     raise StaticError.TypeMismatch(ast)
             elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
@@ -832,31 +842,42 @@ class StaticChecker(BaseVisitor):
         # Return nothing, I guess.
 
     def visitIf(self, ast: AST.If, given_scope: List[ScopeObject]):
-        return_beacon: ReturnBeacon | None = next(filter(lambda x: isinstance(x, ReturnBeacon), reversed(given_scope)), None)
-        if return_beacon is None:
-            # TODO: what to raise here?
-            raise StaticError.Undeclared(StaticError.Function(), "(no return beacon)")
-
-        then_return_beacon = ReturnBeacon()
-        else_return_beacon = ReturnBeacon()
+        # Return presence is not checked.
+        # return_beacon: ReturnBeacon | None = next(filter(lambda x: isinstance(x, ReturnBeacon), reversed(given_scope)), None)
+        # if return_beacon is None:
+        #     # TODO: what to raise here?
+        #     raise StaticError.Undeclared(StaticError.Function(), "(no return beacon)")
+        #
+        # then_return_beacon = ReturnBeacon()
+        # else_return_beacon = ReturnBeacon()
+        #
+        # condition_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
+        # if not isinstance(condition_type, AST.BoolType):
+        #     # TODO: Ask prof. Phung whether to pass ast or ast.expr.
+        #     raise StaticError.TypeMismatch(ast.expr)
+        # self.visit(ast.thenStmt, given_scope + [then_return_beacon])
+        # if ast.elseStmt is not None:
+        #     self.visit(ast.elseStmt, given_scope + [else_return_beacon])
+        #
+        # if then_return_beacon.has_return and else_return_beacon.has_return:
+        #     return_beacon.set_has_return()
 
         condition_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
-            # TODO: Ask Phung whether to pass ast or ast.expr.
+            # TODO: Ask prof. Phung whether to pass ast or ast.expr.
             raise StaticError.TypeMismatch(ast.expr)
-        self.visit(ast.thenStmt, given_scope + [then_return_beacon])
+        self.visit(ast.thenStmt, given_scope)
         if ast.elseStmt is not None:
-            self.visit(ast.elseStmt, given_scope + [else_return_beacon])
-
-        if then_return_beacon.has_return and else_return_beacon.has_return:
-            return_beacon.set_has_return()
+            self.visit(ast.elseStmt, given_scope)
 
     def visitForBasic(self, ast: AST.ForBasic, given_scope: List[ScopeObject]):
         condition_type = self.visit(ast.cond, given_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
-            # TODO: Ask Phung whether to pass ast or ast.expr.
+            # TODO: Ask prof. Phung whether to pass ast or ast.expr.
             raise StaticError.TypeMismatch(ast.cond)
-        self.visit(ast.loop, given_scope + [IsLoopVisit(), ReturnBeacon()])
+        # self.visit(ast.loop, given_scope + [IsLoopVisit(), ReturnBeacon()])
+        # Return presence is not checked.
+        self.visit(ast.loop, given_scope + [IsLoopVisit()])
 
     def visitForStep(self, ast: AST.ForStep, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
@@ -895,12 +916,13 @@ class StaticChecker(BaseVisitor):
 
         condition_type = self.visit(ast.cond, my_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
-            # TODO: Ask Phung whether to pass ast or ast.expr.
+            # TODO: Ask prof. Phung whether to pass ast or ast.expr.
             raise StaticError.TypeMismatch(ast.cond)
 
         self.visit(ast.upda, my_scope)
 
-        my_scope += [IsLoopVisit(), ReturnBeacon()]
+        # my_scope += [IsLoopVisit(), ReturnBeacon()]
+        my_scope += [IsLoopVisit()]
         self.visit(ast.loop, my_scope)
 
     def visitForEach(self, ast: AST.ForEach, given_scope: List[ScopeObject]):
@@ -919,19 +941,21 @@ class StaticChecker(BaseVisitor):
         else:
             value_sym.set_type(AST.ArrayType(iteration_target_type.dimens[1:], iteration_target_type.eleType))
 
-        my_scope += [idx_sym, value_sym, IsLoopVisit(), ReturnBeacon()]
+        # my_scope += [idx_sym, value_sym, IsLoopVisit(), ReturnBeacon()]
+        # Return presence is not checked.
+        my_scope += [idx_sym, value_sym, IsLoopVisit()]
         self.visit(ast.loop, my_scope)
 
     def visitContinue(self, ast: AST.Continue, given_scope: List[ScopeObject]):
         loop_visit = next(filter(lambda x: isinstance(x, IsLoopVisit), reversed(given_scope)), None)
         if loop_visit is None:
-            # TODO: Ask Phung about what to raise here.
+            # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
     def visitBreak(self, ast: AST.Break, given_scope: List[ScopeObject]):
         loop_visit = next(filter(lambda x: isinstance(x, IsLoopVisit), reversed(given_scope)), None)
         if loop_visit is None:
-            # TODO: Ask Phung about what to raise here.
+            # TODO: Ask prof. Phung about what to raise here.
             raise StaticError.TypeMismatch(ast)
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
@@ -941,12 +965,13 @@ class StaticChecker(BaseVisitor):
             # TODO: what to raise here?
             raise StaticError.Undeclared(StaticError.Function(), "(no function)")
 
-        return_beacon: ReturnBeacon | None = next(filter(lambda x: isinstance(x, ReturnBeacon), reversed(given_scope)), None)
-        if return_beacon is None:
-            # TODO: what to raise here?
-            raise StaticError.Undeclared(StaticError.Function(), "(no return beacon)")
-
-        return_beacon.set_has_return()
+        # Return presence is not checked.
+        # return_beacon: ReturnBeacon | None = next(filter(lambda x: isinstance(x, ReturnBeacon), reversed(given_scope)), None)
+        # if return_beacon is None:
+        #     # TODO: what to raise here?
+        #     raise StaticError.Undeclared(StaticError.Function(), "(no return beacon)")
+        #
+        # return_beacon.set_has_return()
 
         if isinstance(current_function.resolved_types.return_type, AST.VoidType):
             if ast.expr is not None:
@@ -1019,7 +1044,7 @@ class StaticChecker(BaseVisitor):
                 if isinstance(sym, FunctionSymbol):
                     # Referencing other variables isn't allowed in constants.
                     if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
-                        # TODO: Ask Phung about what error to raise here.
+                        # TODO: Ask prof. Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
 
                     # Check arguments.
@@ -1108,31 +1133,31 @@ class StaticChecker(BaseVisitor):
                         return ast
                     elif isinstance(id_mode, IsExpressionVisit):
                         # I guess we don't allow bare-referring to structs and interfaces?
-                        # TODO: Ask Phung about this.
+                        # TODO: Ask prof. Phung about this.
                         raise StaticError.TypeMismatch(ast)
                     else:
                         # TODO: ???!!!
                         raise StaticError.TypeMismatch(ast)
                 elif isinstance(sym, FunctionSymbol):
                     # I guess we don't allow bare-referring to functions?
-                    # TODO: Ask Phung about this.
+                    # TODO: Ask prof. Phung about this.
                     raise StaticError.TypeMismatch(ast)
                 elif isinstance(sym, ConstantSymbol):
                     maybe_lhs: IsLeftHandSideVisit | None = next(filter(lambda x: isinstance(x, IsLeftHandSideVisit), reversed(given_scope)), None)
                     if isinstance(maybe_lhs, IsLeftHandSideVisit):
-                        # TODO: Ask Phung about what error to raise here.
+                        # TODO: Ask prof. Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
                     return sym.resolved_type
                 elif isinstance(sym, VariableSymbol):
                     # Referencing other variables isn't allowed in constants.
                     if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
-                        # TODO: Ask Phung about what error to raise here.
+                        # TODO: Ask prof. Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
                     return sym.resolved_type
                 elif isinstance(sym, FunctionParameterSymbol):
                     # Referencing function parameters isn't allowed in constants.
                     if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
-                        # TODO: Ask Phung about what error to raise here.
+                        # TODO: Ask prof. Phung about what error to raise here.
                         raise StaticError.TypeMismatch(ast)
                     return sym.resolved_type
                 else:
@@ -1205,7 +1230,7 @@ class StaticChecker(BaseVisitor):
                 raise StaticError.TypeMismatch(field_value)
 
         if len(ast.elements) != len(struct_sym.original_ast.elements):
-            # TODO: Ask Phung what to raise here.
+            # TODO: Ask prof. Phung what to raise here.
             first_uninitialized_field_name = next(filter(lambda x: x[0] not in [y[0] for y in ast.elements], struct_sym.original_ast.elements), None)
             raise StaticError.Undeclared(StaticError.Field(), first_uninitialized_field_name[0])
 
