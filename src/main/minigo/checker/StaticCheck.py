@@ -232,6 +232,40 @@ class StaticChecker(BaseVisitor):
 
         return type(a) == type(b)
 
+    @staticmethod
+    def local_make_default_value(typename: AST.Type, given_scope: List[ScopeObject], make_nested_list: bool = False):
+        if isinstance(typename, AST.IntType):
+            return AST.IntLiteral(0)
+        elif isinstance(typename, AST.FloatType):
+            return AST.FloatLiteral(0.0)
+        elif isinstance(typename, AST.StringType):
+            return AST.StringLiteral("\"\"")
+        elif isinstance(typename, AST.BoolType):
+            return AST.BooleanLiteral(False)
+        elif isinstance(typename, AST.ArrayType):
+            # Sanity check.
+            d = typename.dimens[0]
+            if not isinstance(d, AST.IntLiteral):
+                raise StaticError.TypeMismatch(typename)
+            child_type = AST.ArrayType(typename.dimens[1:], typename.eleType) if len(typename.dimens) > 1 else typename.eleType
+            vals: AST.NestedList = [StaticChecker.local_make_default_value(child_type, given_scope, True) for _ in range(d.value)]
+            if make_nested_list:
+                return vals
+            return AST.ArrayLiteral(typename.dimens, typename.eleType, vals)
+        elif isinstance(typename, AST.Id):
+            for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+                if sym.name == typename.name:
+                    if isinstance(sym, StructSymbol):
+                        if sym.being_checked:
+                            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+                        return AST.StructLiteral(typename.name, [
+                            (name, StaticChecker.local_make_default_value(resolved_type, given_scope)) for name, resolved_type in sym.resolved_field_types.items()
+                        ])
+                    else:
+                        raise StaticError.TypeMismatch(typename)
+            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+        return AST.NilLiteral()
+
     # Just roll our own recursion here instead of using StaticChecker's cancerous visitor mechanism.
     @staticmethod
     def local_comptime_evaluate(ast: AST.Expr, given_scope: List[ScopeObject]):
@@ -429,8 +463,41 @@ class StaticChecker(BaseVisitor):
                     raise StaticError.TypeMismatch(ast)
             else:
                 raise StaticError.TypeMismatch(ast)
+        elif isinstance(ast, AST.StructLiteral):
+            for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+                if sym.name == ast.name:
+                    if isinstance(sym, StructSymbol):
+                        elements_ast: List[Tuple[str, AST.Expr]] = ast.elements
+
+                        for i, element in enumerate(elements_ast):
+                            field_name, field_value_ast = element
+                            for existing_field_name, existing_field_value in elements_ast[:i]:
+                                if field_name == existing_field_name:
+                                    raise StaticError.Redeclared(StaticError.Field(), field_name)
+
+                            if field_name not in sym.resolved_field_types:
+                                raise StaticError.Undeclared(StaticError.Field(), field_name)
+
+                            resolved_field_value = StaticChecker.local_comptime_evaluate(field_value_ast, given_scope)
+                            resolved_field_value_type = StaticChecker.type_of_literal(resolved_field_value)
+                            if not StaticChecker.local_can_cast_a_to_b(resolved_field_value_type,
+                                                              sym.resolved_field_types[field_name],
+                                                              given_scope):
+                                raise StaticError.TypeMismatch(field_value_ast)
+
+                        initialized_field_names = [y[0] for y in elements_ast]
+                        uninitialized_fields = filter(lambda x: x[0] not in initialized_field_names, sym.resolved_field_types.items())
+
+                        return AST.StructLiteral(ast.name, [
+                            (name, StaticChecker.local_comptime_evaluate(val, given_scope)) for name, val in elements_ast
+                        ] + [
+                            (name, StaticChecker.local_make_default_value(sym.resolved_field_types[name], given_scope)) for name, typename in uninitialized_fields
+                        ])
+                    else:
+                        raise StaticError.TypeMismatch(ast)
+            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
         else:
-            # Probably NilLiteral, ArrayLiteral or StructLiteral.
+            # Probably NilLiteral or ArrayLiteral.
             return ast
 
     def check_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: list[AST.IntLiteral], given_scope: list[ScopeObject]):
@@ -448,7 +515,7 @@ class StaticChecker(BaseVisitor):
                 self.check_nested_list(original_ast, sublist, ele_type, dimens[1:], given_scope)
         else:
             for ele in ast:
-                this_ele_type = self.visit(ele + [IsExpressionVisit()], given_scope)
+                this_ele_type = self.visit(ele, given_scope + [IsExpressionVisit()])
                 if not self.local_can_cast_a_to_b(this_ele_type, ele_type, given_scope):
                     raise StaticError.TypeMismatch(ele)
 
@@ -777,6 +844,7 @@ class StaticChecker(BaseVisitor):
                     if isinstance(sym, StructSymbol):
                         if sym.being_checked:
                             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+                        self.recursively_resolve_struct_definition(sym, index_limit)
 
                         elements_ast: List[Tuple[str, AST.Expr]] = ast.elements
 
@@ -797,12 +865,12 @@ class StaticChecker(BaseVisitor):
                                 raise StaticError.TypeMismatch(field_value_ast)
 
                         initialized_field_names = [y[0] for y in elements_ast]
-                        uninitialized_field_names = filter(lambda x: x[0] not in initialized_field_names, sym.resolved_field_types.items())
+                        uninitialized_fields = filter(lambda x: x[0] not in initialized_field_names, sym.resolved_field_types.items())
 
                         return AST.StructLiteral(ast.name, [
                             (name, self.global_comptime_evaluate(val, index_limit)) for name, val in elements_ast
                         ] + [
-                            (name, self.recursively_make_default_value(sym.resolved_field_types[name], index_limit)) for name in uninitialized_field_names
+                            (name, self.recursively_make_default_value(sym.resolved_field_types[name], index_limit)) for name, typename in uninitialized_fields
                         ])
                     else:
                         raise StaticError.TypeMismatch(ast)
@@ -1029,15 +1097,19 @@ class StaticChecker(BaseVisitor):
         for sym in self.global_declarations:
             if isinstance(sym, StructSymbol):
                 my_scope.append(sym)
-                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
             elif isinstance(sym, InterfaceSymbol):
                 my_scope.append(sym)
-                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
             elif isinstance(sym, FunctionSymbol):
                 my_scope.append(sym)
-                # Cheap hack to filter out the prelude.
-                if isinstance(sym.original_ast, AST.FuncDecl):
-                    self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
+
+        for sym in self.global_declarations:
+            if isinstance(sym, StructSymbol):
+                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
+            elif isinstance(sym, InterfaceSymbol):
+                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
+            # Cheap hack to filter out the prelude.
+            elif isinstance(sym, FunctionSymbol) and isinstance(sym.original_ast, AST.FuncDecl):
+                self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
             elif isinstance(sym, UnresolvedMethod):
                 self.visit(sym.original_ast, list(filter(lambda x: x != sym, my_scope)) + [sym])
             elif isinstance(sym, ConstantSymbol):
@@ -1592,7 +1664,7 @@ class StaticChecker(BaseVisitor):
                 else:
                     raise StaticError.TypeMismatch(ast)
         if struct_sym is None:
-            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+            raise StaticError.Undeclared(StaticError.Type(), ast.name)
 
         for i, element in enumerate(ast.elements):
             field_name, field_value = element
