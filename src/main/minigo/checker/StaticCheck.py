@@ -5,7 +5,7 @@
 
 import AST
 from Visitor import *
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Union
 import StaticError
 
 class InternalError(Exception):
@@ -69,12 +69,12 @@ class FunctionSymbol(Symbol):
         self.done_resolving = False
 
 class VariableSymbol(Symbol):
-    global_symbol_index: int | None
+    global_symbol_index: Optional[int]
 
-    resolved_explicit_type: AST.Type | None
-    resolved_type: AST.Type | None
+    resolved_explicit_type: Optional[AST.Type]
+    resolved_type: Optional[AST.Type]
 
-    def __init__(self, name: str, original_ast: AST.VarDecl | AST.Assign | AST.Id):
+    def __init__(self, name: str, original_ast: Union[AST.VarDecl, AST.Assign, AST.Id]):
         super().__init__(name)
         self.original_ast = original_ast # VarDecl for usual vars, Assign for implicit vars from assigns, Id for loops
 
@@ -82,10 +82,10 @@ class VariableSymbol(Symbol):
         self.resolved_type = None
 
 class ConstantSymbol(Symbol):
-    global_symbol_index: int | None
+    global_symbol_index: Optional[int]
 
-    resolved_type: AST.Type | None
-    resolved_value: AST.Literal | None
+    resolved_type: Optional[AST.Type]
+    resolved_value: Optional[AST.Literal]
 
     def __init__(self, name: str, original_ast: AST.ConstDecl):
         super().__init__(name)
@@ -99,7 +99,7 @@ class ConstantSymbol(Symbol):
         self.done_resolving = False
 
 class FunctionParameterSymbol(Symbol):
-    def __init__(self, name: str, original_ast: AST.ParamDecl | AST.Id, resolved_type: AST.Type):
+    def __init__(self, name: str, original_ast: Union[AST.ParamDecl, AST.Id], resolved_type: AST.Type):
         super().__init__(name)
         # original_ast can be an identifier because it could be a receiver of a method.
         self.original_ast = original_ast
@@ -497,7 +497,7 @@ class StaticChecker(BaseVisitor):
             # Probably NilLiteral or ArrayLiteral.
             return ast
 
-    def check_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: list[AST.IntLiteral], given_scope: list[ScopeObject]):
+    def check_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: List[AST.IntLiteral], given_scope: List[ScopeObject]):
         if not isinstance(ast, list):
             raise StaticError.TypeMismatch(ast)
         this_dimen = dimens[0]
@@ -1084,7 +1084,8 @@ class StaticChecker(BaseVisitor):
         if isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast.varInit)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type)):
-            raise StaticError.TypeMismatch(ast.varInit)
+            # TODO: ask prof. Phung why we have to pass ast instead of ast.varInit. Cite "Test Before Submitting".
+            raise StaticError.TypeMismatch(ast)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
             # Whatever is raised here doesn't matter.
@@ -1102,7 +1103,8 @@ class StaticChecker(BaseVisitor):
         if isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast.iniExpr)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type)):
-            raise StaticError.TypeMismatch(ast.iniExpr)
+            # TODO: ask prof. Phung why we have to pass ast instead of ast.varInit. Cite "Test Before Submitting".
+            raise StaticError.TypeMismatch(ast)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
             # Whatever is raised here doesn't matter.
