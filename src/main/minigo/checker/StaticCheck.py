@@ -152,18 +152,6 @@ class IsLoopVisit(ScopeObject):
     def __init__(self):
         super().__init__()
 
-# # For making sure returns are in place in a function with a return type.
-# # Returns are confirmed to not require checks. I'm removing this mechanism since it does not hinder type-checking.
-# # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
-#
-# class ReturnBeacon(ScopeObject):
-#     def __init__(self):
-#         super().__init__()
-#         self.has_return = False
-#
-#     def set_has_return(self):
-#         self.has_return = True
-
 # Special nil type.
 
 class NilType:
@@ -1337,6 +1325,8 @@ class StaticChecker(BaseVisitor):
         pass # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26303
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
+        # Note that returns do not even need to appear: https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
+
         # Are we in a return?
         current_function: CurrentFunction | None = next(filter(lambda x: isinstance(x, CurrentFunction), reversed(given_scope)), None)
         if current_function is None:
