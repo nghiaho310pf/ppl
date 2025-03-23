@@ -280,25 +280,17 @@ class StaticChecker(BaseVisitor):
         if isinstance(ast, AST.Id):
             for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
                 if sym.name == ast.name:
-                    if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
+                    if isinstance(sym, StructSymbol | InterfaceSymbol | FunctionSymbol | VariableSymbol | FunctionParameterSymbol):
                         # I guess we don't allow bare-referring to structs and interfaces?
-                        # TODO: ask prof. Phung about this.
-                        raise StaticError.TypeMismatch(ast)
-                    elif isinstance(sym, FunctionSymbol):
-                        # I guess we don't allow bare-referring to functions?
                         # TODO: ask prof. Phung about this.
                         raise StaticError.TypeMismatch(ast)
                     elif isinstance(sym, ConstantSymbol):
                         return sym.resolved_value
-                    elif isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
-                        # Referencing other variables/parameters isn't allowed in constants.
-                        # TODO: ask prof. Phung about what error to raise here.
-                        raise StaticError.TypeMismatch(ast)
                     else:
                         # TODO: raise an unreachable case being reached.
                         return None
             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
-        elif isinstance(ast, AST.FuncCall) or isinstance(ast, AST.MethCall):
+        elif isinstance(ast, AST.FuncCall | AST.MethCall):
             # Function calls are not allowed at compilation-time evaluation.
             raise StaticError.TypeMismatch(ast)
         elif isinstance(ast, AST.ArrayCell):
@@ -614,7 +606,7 @@ class StaticChecker(BaseVisitor):
         if isinstance(ast, AST.Id):
             for i, sym in enumerate(self.global_declarations):
                 if isinstance(sym, Symbol) and (sym.name == ast.name):
-                    if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol) or isinstance(sym, FunctionSymbol) or isinstance(sym, VariableSymbol):
+                    if isinstance(sym, StructSymbol | InterfaceSymbol | FunctionSymbol | VariableSymbol | FunctionParameterSymbol):
                         raise StaticError.TypeMismatch(ast)
                     elif (i < index_limit) and isinstance(sym, ConstantSymbol):
                         if sym.being_checked:
