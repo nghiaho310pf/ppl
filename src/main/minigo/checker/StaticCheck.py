@@ -69,6 +69,11 @@ class FunctionSymbol(Symbol):
         self.done_resolving = False
 
 class VariableSymbol(Symbol):
+    global_symbol_index: int | None
+
+    resolved_explicit_type: AST.Type | None
+    resolved_type: AST.Type | None
+
     def __init__(self, name: str, original_ast: AST.VarDecl | AST.Assign | AST.Id):
         super().__init__(name)
         self.original_ast = original_ast # VarDecl for usual vars, Assign for implicit vars from assigns, Id for loops
@@ -77,9 +82,15 @@ class VariableSymbol(Symbol):
         self.resolved_type = None
 
 class ConstantSymbol(Symbol):
+    global_symbol_index: int | None
+
+    resolved_type: AST.Type | None
+    resolved_value: AST.Literal | None
+
     def __init__(self, name: str, original_ast: AST.ConstDecl):
         super().__init__(name)
         self.original_ast = original_ast
+        self.global_symbol_index = None
 
         self.resolved_type = None
         self.resolved_value = None
