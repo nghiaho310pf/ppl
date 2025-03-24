@@ -598,7 +598,7 @@ class StaticChecker(BaseVisitor):
                             resolved_field_value = self.comptime_evaluate(field_value_ast, scoping)
                             resolved_field_value_type = self.type_of_literal(resolved_field_value)
                             if not self.can_cast_a_to_b(resolved_field_value_type, sym.resolved_field_types[field_name]):
-                                raise StaticError.TypeMismatch(field_value_ast)
+                                raise StaticError.TypeMismatch(ast)
 
                         initialized_field_names = [y[0] for y in elements_ast]
                         uninitialized_fields = filter(lambda x: x[0] not in initialized_field_names, sym.resolved_field_types.items())
@@ -700,7 +700,7 @@ class StaticChecker(BaseVisitor):
         if sym.original_ast.conType is not None:
             explicit_type = self.global_resolve_typename(sym.original_ast.conType, index_limit)
             if not self.can_cast_a_to_b(sym.resolved_type, explicit_type):
-                raise StaticError.TypeMismatch(sym.original_ast.iniExpr)
+                raise StaticError.TypeMismatch(sym.original_ast)
         sym.being_checked = False
         sym.done_resolving = True
 
@@ -842,7 +842,7 @@ class StaticChecker(BaseVisitor):
         if (explicit_type is None) and isinstance(implicit_type, NilType):
             # Whatever is raised here doesn't matter.
             # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26184
-            raise StaticError.TypeMismatch(ast.varInit)
+            raise StaticError.TypeMismatch(ast)
 
         return implicit_type if implicit_type is not None else explicit_type
 
@@ -861,7 +861,7 @@ class StaticChecker(BaseVisitor):
         if (explicit_type is None) and isinstance(implicit_type, NilType):
             # Whatever is raised here doesn't matter.
             # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26184
-            raise StaticError.TypeMismatch(ast.iniExpr)
+            raise StaticError.TypeMismatch(ast)
 
         return implicit_type if implicit_type is not None else explicit_type
 
@@ -997,7 +997,7 @@ class StaticChecker(BaseVisitor):
         condition_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
             # TODO: Ask prof. Phung whether to pass ast or ast.expr.
-            raise StaticError.TypeMismatch(ast.expr)
+            raise StaticError.TypeMismatch(ast)
         self.visit(ast.thenStmt, given_scope)
         if ast.elseStmt is not None:
             self.visit(ast.elseStmt, given_scope)
@@ -1005,8 +1005,8 @@ class StaticChecker(BaseVisitor):
     def visitForBasic(self, ast: AST.ForBasic, given_scope: List[ScopeObject]):
         condition_type = self.visit(ast.cond, given_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
-            # TODO: Ask prof. Phung whether to pass ast or ast.expr.
-            raise StaticError.TypeMismatch(ast.cond)
+            # TODO: Ask prof. Phung whether to pass ast or ast.cond.
+            raise StaticError.TypeMismatch(ast)
         self.visit(ast.loop, given_scope + [IsLoopVisit()])
 
     def visitForStep(self, ast: AST.ForStep, given_scope: List[ScopeObject]):
@@ -1046,7 +1046,7 @@ class StaticChecker(BaseVisitor):
         condition_type = self.visit(ast.cond, my_scope + [IsExpressionVisit()])
         if not isinstance(condition_type, AST.BoolType):
             # TODO: Ask prof. Phung whether to pass ast or ast.expr.
-            raise StaticError.TypeMismatch(ast.cond)
+            raise StaticError.TypeMismatch(ast)
 
         self.visit(ast.upda, my_scope)
 
@@ -1339,7 +1339,7 @@ class StaticChecker(BaseVisitor):
 
             field_initializer_type = self.visit(field_value, given_scope + [IsExpressionVisit()])
             if not self.can_cast_a_to_b(field_initializer_type, struct_sym.resolved_field_types[field_name]):
-                raise StaticError.TypeMismatch(field_value)
+                raise StaticError.TypeMismatch(ast)
 
         return AST.Id(ast.name)
 
