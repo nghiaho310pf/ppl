@@ -187,3 +187,12 @@ func (v TIEN) getInt () {
             func F2() [r]int {}
         """
         self.assertTrue(TestChecker.test(input, "", inspect.stack()[0].function))
+
+    def test_019(self):
+        input = """
+            type A struct {
+                q [b]int
+            }
+            const b = 2
+        """
+        self.assertTrue(TestChecker.test(input, "", inspect.stack()[0].function))
