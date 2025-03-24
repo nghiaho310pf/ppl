@@ -455,8 +455,7 @@ class StaticChecker(BaseVisitor):
             if ast.op == "+":
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value + rhs.value)
-                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
-                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
                     return AST.FloatLiteral(float(lhs.value) + float(rhs.value))
                 elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
                     return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
@@ -465,16 +464,14 @@ class StaticChecker(BaseVisitor):
             elif ast.op == "-":
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value - rhs.value)
-                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
-                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
                     return AST.FloatLiteral(float(lhs.value) - float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == "*":
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value * rhs.value)
-                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
-                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
                     return AST.FloatLiteral(float(lhs.value) * float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
@@ -482,8 +479,7 @@ class StaticChecker(BaseVisitor):
                 # TODO: Ask prof. Phung what to do when RHS is zero.
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(int(lhs.value / rhs.value))
-                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
-                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
                     return AST.FloatLiteral(float(lhs.value) / float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
@@ -491,8 +487,7 @@ class StaticChecker(BaseVisitor):
                 # TODO: Ask prof. Phung what to do when RHS is zero.
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value % rhs.value)
-                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
-                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
+                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
                     return AST.FloatLiteral(float(lhs.value) % float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
@@ -1108,8 +1103,7 @@ class StaticChecker(BaseVisitor):
         if ast.op == "+":
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.IntType()
-            elif (isinstance(lhs, AST.FloatType) or isinstance(lhs, AST.IntType)) and (
-                    isinstance(rhs, AST.FloatType) or isinstance(rhs, AST.IntType)):
+            elif isinstance(lhs, AST.FloatType | AST.IntType) and isinstance(rhs, AST.FloatType | AST.IntType):
                 return AST.FloatType()
             elif isinstance(lhs, AST.StringType) and isinstance(rhs, AST.StringType):
                 return AST.StringType()
@@ -1118,8 +1112,7 @@ class StaticChecker(BaseVisitor):
         elif ast.op in ["-", "*", "/", "%"]:
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.IntType()
-            elif (isinstance(lhs, AST.FloatType) or isinstance(lhs, AST.IntType)) and (
-                    isinstance(rhs, AST.FloatType) or isinstance(rhs, AST.IntType)):
+            elif isinstance(lhs, AST.FloatType | AST.IntType) and isinstance(rhs, AST.FloatType | AST.IntType):
                 return AST.FloatType()
             else:
                 raise StaticError.TypeMismatch(ast)
