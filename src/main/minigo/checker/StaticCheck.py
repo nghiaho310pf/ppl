@@ -378,13 +378,14 @@ class StaticChecker(BaseVisitor):
             for i, sym in enumerate(symbols):
                 if isinstance(sym, Symbol) and (sym.name == ast.name):
                     if isinstance(sym, StructSymbol | InterfaceSymbol | FunctionSymbol | VariableSymbol | FunctionParameterSymbol):
-                        # I guess we don't allow bare-referring to things listed above?
-                        # TODO: ask prof. Phung about this.
+                        # Seems it doesn't matter what is being raised here.
+                        # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26183
                         raise StaticError.TypeMismatch(ast)
                     elif isinstance(sym, ConstantSymbol):
                         if isinstance(scoping, List) or i < scoping:
                             if sym.being_checked:
-                                # Cyclic usage! TODO: what to raise here?
+                                # Cyclic usage! It doesn't matter what is being raised here:
+                                # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26313
                                 raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
                             if isinstance(scoping, int):
                                 # In midst of global comptime resolution! Need to resolve this const before using it.
@@ -569,9 +570,9 @@ class StaticChecker(BaseVisitor):
                 if isinstance(sym, Symbol) and (sym.name == ast.name):
                     if isinstance(sym, StructSymbol):
                         if sym.being_checked:
-                            # Cyclic usage! TODO: what to raise here?
+                            # Cyclic usage! It doesn't matter what is being raised here:
+                            # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26313
                             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
-                        # TODO: is extending the index limit here REALLY fine?
                         self.global_resolve_struct_definition(sym, max(scoping, i) if isinstance(scoping, int) else scoping)
 
                         elements_ast: List[Tuple[str, AST.Expr]] = ast.elements
@@ -780,7 +781,7 @@ class StaticChecker(BaseVisitor):
                             # TODO: Ask prof. Phung about what to raise here.
                             raise StaticError.TypeMismatch(sym.original_ast)
                 if not struct_found:
-                    # TODO: Seems it doesn't matter what is being raised here.
+                    # Seems it doesn't matter what is being raised here.
                     # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26053
                     raise StaticError.Undeclared(StaticError.Identifier(), sym.original_ast.recType.name)
             elif isinstance(sym, ConstantSymbol):
@@ -812,8 +813,6 @@ class StaticChecker(BaseVisitor):
             elif isinstance(sym, VariableSymbol):
                 self.visit(sym.original_ast, my_scope)
                 my_scope.append(sym)
-
-        # TODO: do we return anything? Ask prof. Phung.
 
     def visitVarDecl(self, ast: AST.VarDecl, given_scope: List[ScopeObject]):
         # We don't check name dupes; that's done by the outer layer.
@@ -1011,7 +1010,6 @@ class StaticChecker(BaseVisitor):
             # Is the name not declared? If so, turn it into a variable declaration.
             existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
             if existing_maybe_variable is None:
-                # TODO: should VariableSymbol's 2nd argument type accept assignment statement ASTs too?
                 sym = VariableSymbol(lhs.name, ast.init)
 
                 try:
@@ -1140,10 +1138,8 @@ class StaticChecker(BaseVisitor):
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
             if sym.name == ast.funName:
                 if isinstance(sym, FunctionSymbol):
-                    # Referencing other variables isn't allowed in constants.
-                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
-                        # TODO: Ask prof. Phung about what error to raise here.
-                        raise StaticError.TypeMismatch(ast)
+                    # There used to be a IsComptimeExpressionVisit check here, but:
+                    # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26129.
 
                     # Check arguments.
                     if isinstance(sym.original_ast, AST.FuncDecl) and (len(ast.args) != len(sym.original_ast.params)):
@@ -1151,12 +1147,11 @@ class StaticChecker(BaseVisitor):
                     # Sanity check
                     if isinstance(sym.original_ast, AST.FuncDecl) and (len(sym.original_ast.params) != len(sym.resolved_types.parameter_types)):
                         # Sanity check failed !!??!!!??
-                        raise StaticError.TypeMismatch(ast)
+                        raise InternalError(
+                            f"StaticChecker::visitFuncCall: Ran into function {sym.name} where len(sym.original_ast.params) != len(sym.resolved_types.parameter_types) ({len(sym.original_ast.params)} != {len(sym.resolved_types.parameter_types)})")
 
                     for i, arg in enumerate(ast.args):
-                        # No need to append IsExpressionVisit (we're already in one.)
-                        # TODO: add a sanity check for that.
-                        arg_type = self.visit(arg, given_scope)
+                        arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
                         if not self.hard_compare_types(arg_type, sym.resolved_types.parameter_types[i]):
                             raise StaticError.TypeMismatch(ast)
 
@@ -1166,8 +1161,7 @@ class StaticChecker(BaseVisitor):
         raise StaticError.Undeclared(StaticError.Function(), ast.funName)
 
     def visitMethCall(self, ast: AST.MethCall, given_scope: List[ScopeObject]):
-        # TODO: is adding an IsExpressionVisit instance here even necessary?
-        receiver_type = self.visit(ast.receiver, given_scope + [IsExpressionVisit()])
+        receiver_type = self.visit(ast.receiver, given_scope) # No need to append IsExpressionVisit.
         if isinstance(receiver_type, AST.Id):
             # Resolve the type (again)
             for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
@@ -1182,13 +1176,10 @@ class StaticChecker(BaseVisitor):
                                     raise StaticError.TypeMismatch(ast)
                                 # Sanity check
                                 if len(method.fun.params) != len(resolved_method_types.parameter_types):
-                                    # Sanity check failed !!??!!!??
-                                    raise StaticError.TypeMismatch(ast)
+                                    raise InternalError(f"StaticChecker::visitMethCall: Ran into struct method {sym.name}::{ast.metName} where len(method.fun.params) != len(resolved_method_types.parameter_types) ({len(method.fun.params)} != {len(resolved_method_types.parameter_types)})")
 
                                 for i, arg in enumerate(ast.args):
-                                    # No need to append IsExpressionVisit (we're already in one.)
-                                    # TODO: add a sanity check for that.
-                                    arg_type = self.visit(arg, given_scope)
+                                    arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
                                     if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
                                         raise StaticError.TypeMismatch(ast)
 
@@ -1202,23 +1193,20 @@ class StaticChecker(BaseVisitor):
                                 # Check arguments.
                                 if len(ast.args) != len(prototype.params):
                                     raise StaticError.TypeMismatch(ast)
-                                # Sanity check
+                                # Sanity check.
                                 if len(prototype.params) != len(resolved_method_types.parameter_types):
                                     # Sanity check failed !!??!!!??
-                                    raise StaticError.TypeMismatch(ast)
+                                    raise InternalError(f"StaticChecker::visitMethCall: Ran into prototype {sym.name}::{ast.metName} where len(prototype.params) != len(resolved_method_types.parameter_types) ({len(prototype.params)} != {len(resolved_method_types.parameter_types)})")
 
                                 for i, arg in enumerate(ast.args):
-                                    # No need to append IsExpressionVisit (we're already in one.)
-                                    # TODO: add a sanity check for that
-                                    arg_type = self.visit(arg, given_scope)
+                                    arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
                                     if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
                                         raise StaticError.TypeMismatch(ast)
 
                                 return resolved_method_types.return_type
                         raise StaticError.Undeclared(StaticError.Method(), ast.metName)
                     else:
-                        # TODO: ???!!!
-                        raise StaticError.TypeMismatch(ast)
+                        raise InternalError(f"StaticChecker::visitMethCall: Ran into symbol of type {sym} in non-exhaustive reflection elif chain")
         else:
             raise StaticError.Undeclared(StaticError.Method(), ast.metName)
 
@@ -1230,42 +1218,25 @@ class StaticChecker(BaseVisitor):
                     if isinstance(id_mode, IsTypenameVisit):
                         return ast
                     elif isinstance(id_mode, IsExpressionVisit):
-                        # I guess we don't allow bare-referring to structs and interfaces?
-                        # TODO: Ask prof. Phung about this.
+                        # Seems it doesn't matter what is being raised here.
+                        # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26183
                         raise StaticError.TypeMismatch(ast)
                     else:
-                        # TODO: ???!!!
-                        raise StaticError.TypeMismatch(ast)
+                        raise InternalError(f"StaticChecker::visitId: Visited identifier {ast} outside of a typename or expression")
                 elif isinstance(sym, FunctionSymbol):
-                    # I guess we don't allow bare-referring to functions?
-                    # TODO: Ask prof. Phung about this.
+                    # Seems it doesn't matter what is being raised here.
+                    # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26183
                     raise StaticError.TypeMismatch(ast)
-                elif isinstance(sym, ConstantSymbol):
-                    maybe_lhs: IsLeftHandSideVisit | None = next(filter(lambda x: isinstance(x, IsLeftHandSideVisit), reversed(given_scope)), None)
-                    if isinstance(maybe_lhs, IsLeftHandSideVisit):
-                        # TODO: Ask prof. Phung about what error to raise here.
-                        raise StaticError.TypeMismatch(ast)
-                    return sym.resolved_type
-                elif isinstance(sym, VariableSymbol):
-                    # Referencing other variables isn't allowed in constants.
-                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
-                        # TODO: Ask prof. Phung about what error to raise here.
-                        raise StaticError.TypeMismatch(ast)
-                    return sym.resolved_type
-                elif isinstance(sym, FunctionParameterSymbol):
-                    # Referencing function parameters isn't allowed in constants.
-                    if next(filter(lambda x: isinstance(x, IsComptimeExpressionVisit), reversed(given_scope)), None) is not None:
-                        # TODO: Ask prof. Phung about what error to raise here.
-                        raise StaticError.TypeMismatch(ast)
+                elif isinstance(sym, ConstantSymbol | VariableSymbol | FunctionParameterSymbol):
+                    # There used to be a check for IsLeftHandSideVisit here, but:
+                    # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26257
                     return sym.resolved_type
                 else:
                     return None
         raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
 
     def visitArrayCell(self, ast: AST.ArrayCell, given_scope: List[ScopeObject]):
-        # No need to append IsExpressionVisit (we're already in one.)
-        # TODO: add a sanity check for that
-        receiver_type = self.visit(ast.arr, given_scope)
+        receiver_type = self.visit(ast.arr, given_scope) # No need to append IsExpressionVisit.
 
         if not isinstance(receiver_type, AST.ArrayType):
             raise StaticError.TypeMismatch(ast)
@@ -1285,9 +1256,7 @@ class StaticChecker(BaseVisitor):
 
 
     def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: List[ScopeObject]):
-        # No need to append IsExpressionVisit (we're already in one.)
-        # TODO: add a sanity check for that
-        receiver_type = self.visit(ast.receiver, given_scope)
+        receiver_type = self.visit(ast.receiver, given_scope) # No need to append IsExpressionVisit.
 
         if not isinstance(receiver_type, AST.Id):
             raise StaticError.TypeMismatch(ast)
@@ -1316,12 +1285,10 @@ class StaticChecker(BaseVisitor):
         return AST.StringType()
 
     def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[ScopeObject]):
-        dimens = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
-        # TODO: is the IsTypenameVisit() instance useless here?
+        dimensions = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
         ele_type = self.visit(ast.eleType, given_scope + [IsTypenameVisit()])
-        self.check_nested_list(ast, ast.value, ele_type, dimens, given_scope)
-        # TODO: maybe assert ele_type and ast.eleType are the exact same
-        return AST.ArrayType(dimens, ele_type)
+        self.check_nested_list(ast, ast.value, ele_type, dimensions, given_scope)
+        return AST.ArrayType(dimensions, ele_type)
 
     def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[ScopeObject]):
         # Find the struct name.
@@ -1351,5 +1318,4 @@ class StaticChecker(BaseVisitor):
         return AST.Id(ast.name)
 
     def visitNilLiteral(self, ast, param):
-        # TODO: check if this is really fine.
         return NilType()
