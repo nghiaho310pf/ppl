@@ -221,7 +221,7 @@ class StaticChecker(BaseVisitor):
             return not has_mismatched_method
 
         if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
-            if (not StaticChecker.hard_compare_types(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
+            if (not self.can_cast_a_to_b(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
                 return False
             for i, dim in enumerate(a.dimens):
                 if not isinstance(dim, AST.IntLiteral):
@@ -1058,7 +1058,7 @@ class StaticChecker(BaseVisitor):
 
         iteration_target_type = self.visit(ast.arr, my_scope + [IsExpressionVisit()])
         if not isinstance(iteration_target_type, AST.ArrayType):
-            raise StaticError.TypeMismatch(ast.arr)
+            raise StaticError.TypeMismatch(ast)
 
         idx_sym = VariableSymbol(ast.idx.name, ast.idx)
         idx_sym.resolved_type = AST.IntType()
@@ -1079,13 +1079,9 @@ class StaticChecker(BaseVisitor):
         pass # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26303
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
-        # Note that returns do not even need to appear: https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
-
-        # Are we in a return?
         current_function: CurrentFunction | None = next(filter(lambda x: isinstance(x, CurrentFunction), reversed(given_scope)), None)
         if current_function is None:
-            # TODO: what to raise here?
-            raise StaticError.Undeclared(StaticError.Function(), "(no function)")
+            return # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
 
         if isinstance(current_function.resolved_types.return_type, AST.VoidType):
             if ast.expr is not None:
@@ -1171,7 +1167,7 @@ class StaticChecker(BaseVisitor):
                         # No need to append IsExpressionVisit (we're already in one.)
                         # TODO: add a sanity check for that.
                         arg_type = self.visit(arg, given_scope)
-                        if not self.can_cast_a_to_b(arg_type, sym.resolved_types.parameter_types[i]):
+                        if not self.hard_compare_types(arg_type, sym.resolved_types.parameter_types[i]):
                             raise StaticError.TypeMismatch(ast)
 
                     return sym.resolved_types.return_type
@@ -1203,7 +1199,7 @@ class StaticChecker(BaseVisitor):
                                     # No need to append IsExpressionVisit (we're already in one.)
                                     # TODO: add a sanity check for that.
                                     arg_type = self.visit(arg, given_scope)
-                                    if not self.can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i]):
+                                    if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
                                         raise StaticError.TypeMismatch(ast)
 
                                 return resolved_method_types.return_type
@@ -1225,7 +1221,7 @@ class StaticChecker(BaseVisitor):
                                     # No need to append IsExpressionVisit (we're already in one.)
                                     # TODO: add a sanity check for that
                                     arg_type = self.visit(arg, given_scope)
-                                    if not self.can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i]):
+                                    if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
                                         raise StaticError.TypeMismatch(ast)
 
                                 return resolved_method_types.return_type
@@ -1276,25 +1272,46 @@ class StaticChecker(BaseVisitor):
                     return None
         raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
 
-    def visitArrayCell(self, ast, param):
-        return None
+    def visitArrayCell(self, ast: AST.ArrayCell, given_scope: List[ScopeObject]):
+        # No need to append IsExpressionVisit (we're already in one.)
+        # TODO: add a sanity check for that
+        receiver_type = self.visit(ast.arr, given_scope)
+
+        if not isinstance(receiver_type, AST.ArrayType):
+            raise StaticError.TypeMismatch(ast)
+
+        if len(receiver_type.dimens) < len(ast.idx):
+            raise StaticError.TypeMismatch(ast)
+
+        for i, idx in enumerate(ast.idx):
+            idx_type = self.visit(idx, given_scope)
+            if not isinstance(idx_type, AST.IntType):
+                raise StaticError.TypeMismatch(ast)
+
+        if len(receiver_type.dimens) == len(ast.idx):
+            return receiver_type.eleType
+
+        return AST.ArrayType(receiver_type.dimens[len(ast.idx):], receiver_type.eleType)
+
 
     def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: List[ScopeObject]):
         # No need to append IsExpressionVisit (we're already in one.)
         # TODO: add a sanity check for that
         receiver_type = self.visit(ast.receiver, given_scope)
-        if isinstance(receiver_type, AST.Id):
-            # Resolve the type (again)
-            for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
-                if sym.name == receiver_type.name:
-                    if isinstance(sym, StructSymbol):
-                        if ast.field not in sym.resolved_field_types:
-                            raise StaticError.Undeclared(StaticError.Field(), ast.field)
-                        return sym.resolved_field_types[ast.field]
-                    else:
-                        raise StaticError.TypeMismatch(ast)
-        else:
-            raise StaticError.Undeclared(StaticError.Field(), ast.field)
+
+        if not isinstance(receiver_type, AST.Id):
+            raise StaticError.TypeMismatch(ast)
+
+        # Resolve the type (again)
+        for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol),
+                          reversed(given_scope)):
+            if sym.name == receiver_type.name:
+                if isinstance(sym, StructSymbol):
+                    if ast.field not in sym.resolved_field_types:
+                        raise StaticError.Undeclared(StaticError.Field(), ast.field)
+                    return sym.resolved_field_types[ast.field]
+                else:
+                    raise StaticError.TypeMismatch(ast)
 
     def visitIntLiteral(self, ast, param):
         return AST.IntType()
