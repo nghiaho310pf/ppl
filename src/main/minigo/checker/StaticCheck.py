@@ -172,21 +172,18 @@ class StaticChecker(BaseVisitor):
         if isinstance(a, AST.Id) and isinstance(b, AST.Id):
             return a.name == b.name
         if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
-            if (not StaticChecker.hard_compare_types(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
-                return False
-            for i, dim in enumerate(a.dimens):
-                if not isinstance(dim, AST.IntLiteral):
-                    return False
-                other_dim = b.dimens[i]
-                if not isinstance(other_dim, AST.IntLiteral):
-                    return False
-                if dim.value != other_dim.value:
-                    return False
+            return StaticChecker.hard_compare_types(a.eleType, b.eleType) and len(a.dimens) == len(b.dimens) and all(
+                isinstance(a, AST.IntLiteral) and isinstance(b, AST.IntLiteral) and a.value == b.value for a, b in
+                zip(a.dimens, b.dimens))
         return type(a) == type(b)
 
     def can_cast_a_to_b(self, a: AST.Type, b: AST.Type):
         # Allow going from nils to struct/interface instances.
         if isinstance(a, NilType) and isinstance(b, AST.Id):
+            return True
+
+        # Allow going from ints to floats.
+        if isinstance(a, AST.IntType) and isinstance(b, AST.FloatType):
             return True
 
         # Allow structs to be cast to interfaces.
@@ -221,16 +218,9 @@ class StaticChecker(BaseVisitor):
             return not has_mismatched_method
 
         if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
-            if (not self.can_cast_a_to_b(a.eleType, b.eleType)) or (len(a.dimens) != len(b.dimens)):
-                return False
-            for i, dim in enumerate(a.dimens):
-                if not isinstance(dim, AST.IntLiteral):
-                    return False
-                other_dim = b.dimens[i]
-                if not isinstance(other_dim, AST.IntLiteral):
-                    return False
-                if dim.value != other_dim.value:
-                    return False
+            return self.can_cast_a_to_b(a.eleType, b.eleType) and len(a.dimens) == len(b.dimens) and all(
+                isinstance(a, AST.IntLiteral) and isinstance(b, AST.IntLiteral) and a.value == b.value for a, b in
+                zip(a.dimens, b.dimens))
 
         return type(a) == type(b)
 
@@ -1090,7 +1080,7 @@ class StaticChecker(BaseVisitor):
             if ast.expr is None:
                 raise StaticError.TypeMismatch(ast)
             expr_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
-            if not self.can_cast_a_to_b(expr_type, current_function.resolved_types.return_type):
+            if not self.hard_compare_types(expr_type, current_function.resolved_types.return_type):
                 raise StaticError.TypeMismatch(ast)
 
     def visitBinaryOp(self, ast: AST.BinaryOp, given_scope: List[ScopeObject]):
