@@ -1,7 +1,11 @@
+"""
+ * @author nghia.ho310pf
+ * @note https://www.youtube.com/watch?v=6hUH7RxU2yQ
+"""
+
 import unittest
 from TestUtils import TestChecker
 from AST import *
-import inspect
 
 test_increment = 0
 
