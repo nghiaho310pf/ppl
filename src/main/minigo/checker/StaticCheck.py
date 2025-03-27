@@ -625,7 +625,7 @@ class StaticChecker(BaseVisitor):
     # Global things get their own set of functions because of complicated identifier dependencies.
     def global_resolve_struct_definition(self, sym: StructSymbol, index_limit: int):
         if sym.done_resolving:
-            return
+            return AST.Id(sym.name)
 
         sym.being_checked = True
         for i, element in enumerate(sym.original_ast.elements):
@@ -642,7 +642,7 @@ class StaticChecker(BaseVisitor):
 
     def global_resolve_interface_definition(self, sym: InterfaceSymbol, index_limit: int):
         if sym.done_resolving:
-            return
+            return AST.Id(sym.name)
 
         if sym.being_checked:
             # Allow interfaces to have methods returning themselves.
@@ -1105,7 +1105,7 @@ class StaticChecker(BaseVisitor):
                 return AST.BoolType()
             elif isinstance(lhs, AST.FloatType) and isinstance(rhs, AST.FloatType):
                 return AST.BoolType()
-            elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
+            elif isinstance(lhs, AST.StringType) and isinstance(rhs, AST.StringType):
                 return AST.BoolType()
             else:
                 raise StaticError.TypeMismatch(ast)
@@ -1127,7 +1127,7 @@ class StaticChecker(BaseVisitor):
         elif ast.op == "-":
             if isinstance(rhs, AST.IntType):
                 return AST.IntType()
-            elif isinstance(rhs, AST.FloatLiteral):
+            elif isinstance(rhs, AST.FloatType):
                 return AST.FloatType()
             else:
                 raise StaticError.TypeMismatch(ast)
@@ -1152,6 +1152,7 @@ class StaticChecker(BaseVisitor):
 
                     for i, arg in enumerate(ast.args):
                         arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
+                        print(f"{arg_type}, {sym.resolved_types.parameter_types[i]}")
                         if not self.hard_compare_types(arg_type, sym.resolved_types.parameter_types[i]):
                             raise StaticError.TypeMismatch(ast)
 
