@@ -1152,7 +1152,6 @@ class StaticChecker(BaseVisitor):
 
                     for i, arg in enumerate(ast.args):
                         arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
-                        print(f"{arg_type}, {sym.resolved_types.parameter_types[i]}")
                         if not self.hard_compare_types(arg_type, sym.resolved_types.parameter_types[i]):
                             raise StaticError.TypeMismatch(ast)
 

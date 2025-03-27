@@ -772,3 +772,92 @@ class CheckSuite(unittest.TestCase):
             ]))
         ])
         self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_const_array_dim_1(self):
+        i = Program([
+            ConstDecl("x", IntType(), BinaryOp("+", IntLiteral(2), IntLiteral(3))),
+            ConstDecl("y", IntType(), BinaryOp("*", IntLiteral(1), IntLiteral(5))),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("arr", ArrayType([Id("x")], IntType()), ArrayLiteral([Id("x")], IntType(),
+                                                                             [IntLiteral(1), IntLiteral(2),
+                                                                              IntLiteral(3), IntLiteral(4),
+                                                                              IntLiteral(5)])),
+                Assign(Id("arr"), ArrayLiteral([Id("y")], IntType(),
+                                               [IntLiteral(6), IntLiteral(7), IntLiteral(8), IntLiteral(9),
+                                                IntLiteral(10)]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_const_array_dim_2(self):
+        i = Program([
+            ConstDecl("size", IntType(), IntLiteral(10)),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("arr", ArrayType([Id("size")], IntType()),
+                        ArrayLiteral([Id("size")], IntType(), [IntLiteral(i) for i in range(10)])),
+                Assign(Id("arr"), ArrayLiteral([Id("size")], IntType(), [IntLiteral(i + 10) for i in range(10)]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_const_array_dim_3(self):
+        i = Program([
+            ConstDecl("dim1", IntType(), IntLiteral(2)),
+            ConstDecl("dim2", IntType(), IntLiteral(3)),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("arr", ArrayType([Id("dim1"), Id("dim2")], IntType()),
+                        ArrayLiteral([Id("dim1"), Id("dim2")], IntType(),
+                                     [[IntLiteral(1), IntLiteral(2), IntLiteral(3)],
+                                      [IntLiteral(4), IntLiteral(5), IntLiteral(6)]])),
+                Assign(Id("arr"), ArrayLiteral([Id("dim1"), Id("dim2")], IntType(),
+                                               [[IntLiteral(7), IntLiteral(8), IntLiteral(9)],
+                                                [IntLiteral(10), IntLiteral(11), IntLiteral(12)]]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_const_array_dim_4(self):
+        i = Program([
+            ConstDecl("dim", IntType(), BinaryOp("/", IntLiteral(10), IntLiteral(2))),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("arr", ArrayType([Id("dim")], IntType()), ArrayLiteral([Id("dim")], IntType(),
+                                                                               [IntLiteral(1), IntLiteral(2),
+                                                                                IntLiteral(3), IntLiteral(4),
+                                                                                IntLiteral(5)])),
+                Assign(Id("arr"), ArrayLiteral([Id("dim")], IntType(),
+                                               [IntLiteral(6), IntLiteral(7), IntLiteral(8), IntLiteral(9),
+                                                IntLiteral(10)]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_const_array_dim_5(self):
+        i = Program([
+            ConstDecl("dim1", IntType(), BinaryOp("%", IntLiteral(11), IntLiteral(3))),
+            ConstDecl("dim2", IntType(), BinaryOp("-", IntLiteral(7), IntLiteral(4))),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("arr", ArrayType([Id("dim1"), Id("dim2")], IntType()),
+                        ArrayLiteral([Id("dim1"), Id("dim2")], IntType(),
+                                     [[IntLiteral(1), IntLiteral(2), IntLiteral(3)],
+                                      [IntLiteral(4), IntLiteral(5), IntLiteral(6)]])),
+                Assign(Id("arr"), ArrayLiteral([Id("dim1"), Id("dim2")], IntType(),
+                                               [[IntLiteral(7), IntLiteral(8), IntLiteral(9)],
+                                                [IntLiteral(10), IntLiteral(11), IntLiteral(12)]]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_const_array_dim_6(self):
+        i = Program([
+            ConstDecl("dim", IntType(), UnaryOp("-", IntLiteral(-5))),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("arr", ArrayType([Id("dim")], IntType()), ArrayLiteral([Id("dim")], IntType(),
+                                                                               [IntLiteral(1), IntLiteral(2),
+                                                                                IntLiteral(3), IntLiteral(4),
+                                                                                IntLiteral(5)])),
+                Assign(Id("arr"), ArrayLiteral([Id("dim")], IntType(),
+                                               [IntLiteral(6), IntLiteral(7), IntLiteral(8), IntLiteral(9),
+                                                IntLiteral(10)]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
