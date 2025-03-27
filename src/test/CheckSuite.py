@@ -399,3 +399,376 @@ class CheckSuite(unittest.TestCase):
             ]))
         ])
         self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_1(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), BinaryOp("+", IntLiteral(0), IntLiteral(0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_2(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), BinaryOp("-", IntLiteral(0), IntLiteral(0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_3(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), BinaryOp("*", IntLiteral(0), IntLiteral(0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_4(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), BinaryOp("/", IntLiteral(0), IntLiteral(1))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_5(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), BinaryOp("%", IntLiteral(0), IntLiteral(1))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_6(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("+", FloatLiteral(0.0), FloatLiteral(0.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_7(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("-", FloatLiteral(0.0), FloatLiteral(0.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_8(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("*", FloatLiteral(0.0), FloatLiteral(0.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_9(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("/", FloatLiteral(0.0), FloatLiteral(1.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_10(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("+", FloatLiteral(1.5), FloatLiteral(2.5))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_11(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("-", FloatLiteral(3.0), FloatLiteral(1.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_12(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("*", FloatLiteral(2.0), FloatLiteral(3.5))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_13(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), BinaryOp("/", FloatLiteral(10.0), FloatLiteral(2.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_14(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), UnaryOp("-", IntLiteral(2))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_arithmetic_operations_15(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", FloatType(), UnaryOp("-", FloatLiteral(2))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_1(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("&&", BooleanLiteral(True), BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_2(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("||", BooleanLiteral(False), BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_3(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), UnaryOp("!", BooleanLiteral(False))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_4(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("&&", UnaryOp("!", BooleanLiteral(True)), BooleanLiteral(False))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_5(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("||", UnaryOp("!", BooleanLiteral(False)), BooleanLiteral(False))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_6(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("&&", BooleanLiteral(True), UnaryOp("!", BooleanLiteral(False)))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_7(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("||", BooleanLiteral(False), UnaryOp("!", BooleanLiteral(True)))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_8(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("&&", BinaryOp("||", BooleanLiteral(True), BooleanLiteral(False)),
+                                                  BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_9(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("||", BinaryOp("&&", BooleanLiteral(True), BooleanLiteral(False)),
+                                                  BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_10(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), UnaryOp("!", BinaryOp("&&", BooleanLiteral(True), BooleanLiteral(False)))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_bool_operations_invalid_1(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("&&", IntLiteral(1), BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(IntLiteral(1),&&,BooleanLiteral(true))\n", make_test_number()))
+
+    def test_bool_operations_invalid_2(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("||", FloatLiteral(1.0), BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(FloatLiteral(1.0),||,BooleanLiteral(true))\n", make_test_number()))
+
+    def test_bool_operations_invalid_3(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), UnaryOp("!", IntLiteral(1))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: UnaryOp(!,IntLiteral(1))\n", make_test_number()))
+
+    def test_bool_operations_invalid_4(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("&&", BooleanLiteral(True), IntLiteral(1))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(BooleanLiteral(true),&&,IntLiteral(1))\n", make_test_number()))
+
+    def test_bool_operations_invalid_5(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("||", BooleanLiteral(True), FloatLiteral(1.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(BooleanLiteral(true),||,FloatLiteral(1.0))\n", make_test_number()))
+
+    def test_bool_operations_invalid_6(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("&&", FloatLiteral(1.0), IntLiteral(1))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(FloatLiteral(1.0),&&,IntLiteral(1))\n", make_test_number()))
+
+    def test_bool_operations_invalid_7(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), BinaryOp("||", IntLiteral(1), FloatLiteral(1.0))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(IntLiteral(1),||,FloatLiteral(1.0))\n", make_test_number()))
+
+    def test_bool_operations_invalid_8(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(),
+                        BinaryOp("&&", BinaryOp("||", BooleanLiteral(True), IntLiteral(1)), BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(BooleanLiteral(true),||,IntLiteral(1))\n", make_test_number()))
+
+    def test_bool_operations_invalid_9(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(),
+                        BinaryOp("||", BinaryOp("&&", FloatLiteral(1.0), BooleanLiteral(False)), BooleanLiteral(True))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(FloatLiteral(1.0),&&,BooleanLiteral(false))\n", make_test_number()))
+
+    def test_bool_operations_invalid_10(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("b", BoolType(), UnaryOp("!", BinaryOp("&&", BooleanLiteral(True), FloatLiteral(1.0)))),
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: BinaryOp(BooleanLiteral(true),&&,FloatLiteral(1.0))\n", make_test_number()))
+
+    def test_if_1(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", BoolType(), BooleanLiteral(False)),
+                If(Id("i"), Block([]), Block([]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_if_2(self):
+        i = Program([
+            FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), IntLiteral(2)),
+                If(Id("i"), Block([]), Block([]))
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "Type Mismatch: If(Id(i),Block([]),Block([]))\n", make_test_number()))
+
+    def test_func_call_1(self):
+        i = Program([
+            FuncDecl("foo", [ParamDecl("x", IntType())], VoidType(), Block([])),
+            FuncDecl("main", [], VoidType(), Block([
+                FuncCall("foo", [IntLiteral(1)])
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_func_call_2(self):
+        i = Program([
+            FuncDecl("bar", [ParamDecl("x", FloatType())], VoidType(), Block([])),
+            FuncDecl("main", [], VoidType(), Block([
+                FuncCall("bar", [FloatLiteral(1.0)])
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_func_call_3(self):
+        i = Program([
+            FuncDecl("baz", [ParamDecl("x", BoolType())], VoidType(), Block([])),
+            FuncDecl("main", [], VoidType(), Block([
+                FuncCall("baz", [BooleanLiteral(True)])
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_func_call_4(self):
+        i = Program([
+            FuncDecl("str_func", [ParamDecl("s", StringType())], VoidType(), Block([])),
+            FuncDecl("main", [], VoidType(), Block([
+                FuncCall("str_func", [StringLiteral("hello")])
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_func_call_5(self):
+        i = Program([
+            FuncDecl("arr_func", [ParamDecl("arr", ArrayType([IntLiteral(5)], IntType()))], VoidType(), Block([])),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("my_arr", ArrayType([IntLiteral(5)], IntType()), ArrayLiteral([IntLiteral(5)], IntType(),
+                                                                                      [IntLiteral(1), IntLiteral(2),
+                                                                                       IntLiteral(3), IntLiteral(4),
+                                                                                       IntLiteral(5)])),
+                FuncCall("arr_func", [Id("my_arr")])
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_func_call_6(self):
+        i = Program([
+            StructType("MyStruct", [("x", IntType())], []),
+            FuncDecl("struct_func", [ParamDecl("s", Id("MyStruct"))], VoidType(), Block([])),
+            FuncDecl("main", [], VoidType(), Block([
+                VarDecl("my_struct", Id("MyStruct"), StructLiteral("MyStruct", [("x", IntLiteral(10))])),
+                FuncCall("struct_func", [Id("my_struct")])
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+
+    def test_func_call_7(self):
+        i = Program([
+            FuncDecl("multi_param",
+                     [ParamDecl("a", IntType()), ParamDecl("b", FloatType()), ParamDecl("c", BoolType())], VoidType(),
+                     Block([])),
+            FuncDecl("main", [], VoidType(), Block([
+                FuncCall("multi_param", [IntLiteral(1), FloatLiteral(2.0), BooleanLiteral(True)])
+            ]))
+        ])
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
