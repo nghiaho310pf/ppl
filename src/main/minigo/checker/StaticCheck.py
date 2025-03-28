@@ -5,7 +5,7 @@
 
 import AST
 from Visitor import *
-from typing import List, Tuple, Optional, Union
+from typing import List, Tuple, Optional, Union, Dict
 import StaticError
 
 class InternalError(Exception):
@@ -27,6 +27,9 @@ class ScopeObject:
 # to fully resolve array type ASTs.
 
 class ResolvedFunctionTypes:
+    return_type: Optional[AST.Type]
+    parameter_types: Optional[List[AST.Type]]
+
     def __init__(self):
         self.return_type = None
         self.parameter_types = None
@@ -34,41 +37,62 @@ class ResolvedFunctionTypes:
 # For name resolution.
 
 class Symbol(ScopeObject):
+    name: str
+
     def __init__(self, name: str):
         super().__init__()
         self.name = name
 
 class StructSymbol(Symbol):
+    original_ast: AST.StructType
+
+    resolved_field_types: Dict[str, AST.Type]
+    resolved_method_types: Dict[str, ResolvedFunctionTypes]
+
+    being_checked: bool
+    done_resolving: bool
+
     def __init__(self, name: str, original_ast: AST.StructType):
         super().__init__(name)
         self.original_ast = original_ast
 
-        self.resolved_field_types = dict[str, AST.Type]()
-        self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
+        self.resolved_field_types = dict()
+        self.resolved_method_types = dict()
 
         self.being_checked = False
         self.done_resolving = False
 
 class InterfaceSymbol(Symbol):
+    original_ast: AST.InterfaceType
+
+    resolved_method_types: Dict[str, ResolvedFunctionTypes]
+
+    being_checked: bool
+    done_resolving: bool
+
     def __init__(self, name: str, original_ast: AST.InterfaceType):
         super().__init__(name)
         self.original_ast = original_ast
 
-        self.resolved_method_types = dict[str, ResolvedFunctionTypes]()
+        self.resolved_method_types = dict()
 
         self.being_checked = False
         self.done_resolving = False
 
 class FunctionSymbol(Symbol):
+    original_ast: AST.AST
+    resolved_types: ResolvedFunctionTypes
+    done_resolving: bool
+
     def __init__(self, name: str, original_ast: AST.AST):
         super().__init__(name)
         self.original_ast = original_ast
-
         self.resolved_types = ResolvedFunctionTypes()
-
         self.done_resolving = False
 
 class VariableSymbol(Symbol):
+    original_ast: Union[AST.VarDecl, AST.Assign, AST.Id]
+
     resolved_explicit_type: Optional[AST.Type]
     resolved_type: Optional[AST.Type]
 
@@ -80,8 +104,14 @@ class VariableSymbol(Symbol):
         self.resolved_type = None
 
 class ConstantSymbol(Symbol):
+    original_ast: AST.ConstDecl
+    global_symbol_index: Optional[int]
+
     resolved_type: Optional[AST.Type]
     resolved_value: Optional[AST.Literal]
+
+    being_checked: bool
+    done_resolving: bool
 
     def __init__(self, name: str, original_ast: AST.ConstDecl):
         super().__init__(name)
@@ -95,6 +125,9 @@ class ConstantSymbol(Symbol):
         self.done_resolving = False
 
 class FunctionParameterSymbol(Symbol):
+    original_ast: Union[AST.ParamDecl, AST.Id]
+    resolved_type: Optional[AST.Type]
+
     def __init__(self, name: str, original_ast: Union[AST.ParamDecl, AST.Id], resolved_type: AST.Type):
         super().__init__(name)
         # original_ast can be an identifier because it could be a receiver of a method.
@@ -104,6 +137,8 @@ class FunctionParameterSymbol(Symbol):
 # For banning illegal returns.
 
 class CurrentFunction(ScopeObject):
+    resolved_types: ResolvedFunctionTypes
+
     def __init__(self, resolved_types: ResolvedFunctionTypes):
         super().__init__()
         self.resolved_types = resolved_types
@@ -111,6 +146,9 @@ class CurrentFunction(ScopeObject):
 # Cheap hacks for resolving types for methods.
 
 class UnresolvedMethod(ScopeObject):
+    original_ast: AST.MethodDecl
+    struct_symbol: Optional[StructSymbol]
+
     def __init__(self, original_ast: AST.MethodDecl):
         super().__init__()
         self.original_ast = original_ast
@@ -161,7 +199,9 @@ class StaticChecker(BaseVisitor):
     # They are not const-friendly so they don't really need more processing.
     method_declarations: List[AST.MethodDecl]
 
-    def __init__(self, root_ast):
+    root_ast: AST.Program
+
+    def __init__(self, root_ast: AST.Program):
         self.global_declarations = self.create_prelude()
         self.method_declarations = []
 
@@ -192,8 +232,8 @@ class StaticChecker(BaseVisitor):
             b_id: AST.Id = b
             if a_id.name == b_id.name:
                 return True
-            maybe_source_struct: StructSymbol | None = next(filter(lambda x: isinstance(x, StructSymbol) and (x.name == a_id.name), self.global_declarations), None)
-            maybe_target_interface: InterfaceSymbol | None = next(filter(lambda x: isinstance(x, InterfaceSymbol) and (x.name == b_id.name), self.global_declarations), None)
+            maybe_source_struct: Optional[StructSymbol] = next(filter(lambda x: isinstance(x, StructSymbol) and (x.name == a_id.name), self.global_declarations), None)
+            maybe_target_interface: Optional[InterfaceSymbol] = next(filter(lambda x: isinstance(x, InterfaceSymbol) and (x.name == b_id.name), self.global_declarations), None)
 
             if (maybe_source_struct is None) or (maybe_target_interface is None):
                 return False
@@ -377,7 +417,7 @@ class StaticChecker(BaseVisitor):
             symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, Symbol), reversed(scoping))
             for i, sym in enumerate(symbols):
                 if isinstance(sym, Symbol) and (sym.name == ast.name):
-                    if isinstance(sym, StructSymbol | InterfaceSymbol | FunctionSymbol | VariableSymbol | FunctionParameterSymbol):
+                    if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol) or isinstance(sym, FunctionSymbol) or isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
                         # Seems it doesn't matter what is being raised here.
                         # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26183
                         raise StaticError.TypeMismatch(ast)
@@ -394,7 +434,7 @@ class StaticChecker(BaseVisitor):
                     else:
                         raise InternalError(f"StaticChecker::comptime_evaluate: Ran into symbol of type {sym} in non-exhaustive reflection elif chain")
             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
-        elif isinstance(ast, AST.FuncCall | AST.MethCall):
+        elif isinstance(ast, AST.FuncCall) or isinstance(ast, AST.MethCall):
             # Function calls are not allowed at compilation-time evaluation.
             raise StaticError.TypeMismatch(ast)
         elif isinstance(ast, AST.ArrayCell):
@@ -432,7 +472,7 @@ class StaticChecker(BaseVisitor):
             for i, sym in enumerate(symbols):
                 if isinstance(sym, Symbol) and (receiver.name == sym.name):
                     if isinstance(sym, StructSymbol):
-                        q: Tuple[str, AST.Expr] | None = next(filter(lambda t: t[0] == field, receiver.elements), None)
+                        q: Optional[Tuple[str, AST.Expr]] = next(filter(lambda t: t[0] == field, receiver.elements), None)
                         if q is None:
                             raise StaticError.Undeclared(StaticError.Field(), field)
                         return self.comptime_evaluate(q[1], scoping)
@@ -446,7 +486,8 @@ class StaticChecker(BaseVisitor):
             if ast.op == "+":
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value + rhs.value)
-                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) + float(rhs.value))
                 elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
                     return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
@@ -455,14 +496,16 @@ class StaticChecker(BaseVisitor):
             elif ast.op == "-":
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value - rhs.value)
-                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) - float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == "*":
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value * rhs.value)
-                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) * float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
@@ -470,7 +513,8 @@ class StaticChecker(BaseVisitor):
                 # TODO: Ask prof. Phung what to do when RHS is zero.
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(int(lhs.value / rhs.value))
-                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) / float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
@@ -478,7 +522,8 @@ class StaticChecker(BaseVisitor):
                 # TODO: Ask prof. Phung what to do when RHS is zero.
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value % rhs.value)
-                elif isinstance(lhs, AST.FloatLiteral | AST.IntLiteral) and isinstance(rhs, AST.FloatLiteral | AST.IntLiteral):
+                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
+                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) % float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
@@ -818,8 +863,8 @@ class StaticChecker(BaseVisitor):
         # We don't check name dupes; that's done by the outer layer.
         # Instead, we only visit the inner expression and check for type mismatches.
 
-        explicit_type: AST.Type | None = self.visit(ast.varType, given_scope + [IsTypenameVisit()]) if (ast.varType is not None) else None
-        implicit_type: AST.Type | None = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if (ast.varInit is not None) else None
+        explicit_type: Optional[AST.Type] = self.visit(ast.varType, given_scope + [IsTypenameVisit()]) if (ast.varType is not None) else None
+        implicit_type: Optional[AST.Type] = self.visit(ast.varInit, given_scope + [IsExpressionVisit()]) if (ast.varInit is not None) else None
 
         # No voids allowed.
         if isinstance(implicit_type, AST.VoidType):
@@ -837,8 +882,8 @@ class StaticChecker(BaseVisitor):
 
     def visitConstDecl(self, ast: AST.ConstDecl, given_scope: List[ScopeObject]):
         # We don't check name dupes here either; that's done by the outer layer.
-        explicit_type: AST.Type | None = self.visit(ast.conType, given_scope + [IsTypenameVisit()]) if (ast.conType is not None) else None
-        implicit_type: AST.Type | None = self.visit(ast.iniExpr, given_scope + [IsComptimeExpressionVisit(), IsExpressionVisit()]) if (ast.iniExpr is not None) else None
+        explicit_type: Optional[AST.Type] = self.visit(ast.conType, given_scope + [IsTypenameVisit()]) if (ast.conType is not None) else None
+        implicit_type: Optional[AST.Type] = self.visit(ast.iniExpr, given_scope + [IsComptimeExpressionVisit(), IsExpressionVisit()]) if (ast.iniExpr is not None) else None
 
         # No voids allowed.
         if isinstance(implicit_type, AST.VoidType):
@@ -855,7 +900,7 @@ class StaticChecker(BaseVisitor):
         return implicit_type if implicit_type is not None else explicit_type
 
     def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[ScopeObject]):
-        self_sym: FunctionSymbol | None = next(filter(lambda x: isinstance(x, FunctionSymbol) and (x.original_ast == ast), reversed(given_scope)), None)
+        self_sym: Optional[FunctionSymbol] = next(filter(lambda x: isinstance(x, FunctionSymbol) and (x.original_ast == ast), reversed(given_scope)), None)
         # Sanity check.
         if self_sym is None:
             raise InternalError("StaticCheck::visitFuncDecl: FunctionSymbol for AST not present during its own visit")
@@ -871,7 +916,7 @@ class StaticChecker(BaseVisitor):
         self.visit(ast.body, my_scope + [current_function_scope_object])
 
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[ScopeObject]):
-        self_sym: UnresolvedMethod | None = next(filter(lambda x: isinstance(x, UnresolvedMethod) and (x.original_ast == ast), reversed(given_scope)), None)
+        self_sym: Optional[UnresolvedMethod] = next(filter(lambda x: isinstance(x, UnresolvedMethod) and (x.original_ast == ast), reversed(given_scope)), None)
         # Sanity check.
         if self_sym is None:
             raise InternalError("StaticCheck::visitMethodDecl: UnresolvedMethod for AST not present during its own visit")
@@ -1067,7 +1112,7 @@ class StaticChecker(BaseVisitor):
         pass # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26303
 
     def visitReturn(self, ast: AST.Return, given_scope: List[ScopeObject]):
-        current_function: CurrentFunction | None = next(filter(lambda x: isinstance(x, CurrentFunction), reversed(given_scope)), None)
+        current_function: Optional[CurrentFunction] = next(filter(lambda x: isinstance(x, CurrentFunction), reversed(given_scope)), None)
         if current_function is None:
             return # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
 
@@ -1087,7 +1132,8 @@ class StaticChecker(BaseVisitor):
         if ast.op == "+":
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.IntType()
-            elif isinstance(lhs, AST.FloatType | AST.IntType) and isinstance(rhs, AST.FloatType | AST.IntType):
+            elif (isinstance(lhs, AST.FloatType) or isinstance(lhs, AST.IntType)) and (
+                    isinstance(rhs, AST.FloatType) or isinstance(rhs, AST.IntType)):
                 return AST.FloatType()
             elif isinstance(lhs, AST.StringType) and isinstance(rhs, AST.StringType):
                 return AST.StringType()
@@ -1096,7 +1142,8 @@ class StaticChecker(BaseVisitor):
         elif ast.op in ["-", "*", "/", "%"]:
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.IntType()
-            elif isinstance(lhs, AST.FloatType | AST.IntType) and isinstance(rhs, AST.FloatType | AST.IntType):
+            elif (isinstance(lhs, AST.FloatType) or isinstance(lhs, AST.IntType)) and (
+                    isinstance(rhs, AST.FloatType) or isinstance(rhs, AST.IntType)):
                 return AST.FloatType()
             else:
                 raise StaticError.TypeMismatch(ast)
@@ -1214,7 +1261,7 @@ class StaticChecker(BaseVisitor):
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
             if sym.name == ast.name:
                 if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
-                    id_mode: IsTypenameVisit | IsExpressionVisit | None = next(filter(lambda x: isinstance(x, IsTypenameVisit) or isinstance(x, IsExpressionVisit), reversed(given_scope)), None)
+                    id_mode: Union[IsTypenameVisit, IsExpressionVisit, None] = next(filter(lambda x: isinstance(x, IsTypenameVisit) or isinstance(x, IsExpressionVisit), reversed(given_scope)), None)
                     if isinstance(id_mode, IsTypenameVisit):
                         return ast
                     elif isinstance(id_mode, IsExpressionVisit):
@@ -1227,7 +1274,7 @@ class StaticChecker(BaseVisitor):
                     # Seems it doesn't matter what is being raised here.
                     # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26183
                     raise StaticError.TypeMismatch(ast)
-                elif isinstance(sym, ConstantSymbol | VariableSymbol | FunctionParameterSymbol):
+                elif isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
                     # There used to be a check for IsLeftHandSideVisit here, but:
                     # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26257
                     return sym.resolved_type
@@ -1292,7 +1339,7 @@ class StaticChecker(BaseVisitor):
 
     def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[ScopeObject]):
         # Find the struct name.
-        struct_sym: StructSymbol | None = None
+        struct_sym: Optional[StructSymbol] = None
         for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
             if sym.name == ast.name:
                 if isinstance(sym, StructSymbol):
