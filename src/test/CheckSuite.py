@@ -348,7 +348,7 @@ class CheckSuite(unittest.TestCase):
                 )
             ]))
         ])
-        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+        self.assertTrue(TestChecker.test(i, "Redeclared Variable: i\n", make_test_number()))
 
     def test_name_shadowing_6(self):
         i = Program([
@@ -364,7 +364,7 @@ class CheckSuite(unittest.TestCase):
                 )
             ]))
         ])
-        self.assertTrue(TestChecker.test(i, "", make_test_number()))
+        self.assertTrue(TestChecker.test(i, "Redeclared Variable: i\n", make_test_number()))
 
     def test_implicit_declaration_1(self):
         i = Program([

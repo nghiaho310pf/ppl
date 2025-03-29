@@ -183,8 +183,13 @@ class IsComptimeExpressionVisit(ScopeObject):
 # For banning breaks and continues outside of loops.
 
 class IsLoopVisit(ScopeObject):
-    def __init__(self):
+    block: AST.Block
+    banned_names: List[str]
+
+    def __init__(self, block: AST.Block, banned_names: List[str]):
         super().__init__()
+        self.block = block
+        self.banned_names = banned_names
 
 # Special nil type.
 
@@ -279,9 +284,9 @@ class StaticChecker(BaseVisitor):
                 self.check_nested_list(original_ast, sublist, ele_type, dimens[1:], given_scope)
         else:
             for ele in ast:
-                this_ele_type = self.visit(ele, given_scope + [IsExpressionVisit()])
+                this_ele_type = self.visit(ele, given_scope) # No need to append IsExpressionVisit.
                 if not self.can_cast_a_to_b(this_ele_type, ele_type):
-                    raise StaticError.TypeMismatch(ele)
+                    raise StaticError.TypeMismatch(original_ast)
 
     @staticmethod
     def create_prelude():
@@ -815,6 +820,10 @@ class StaticChecker(BaseVisitor):
                             for existing_method in maybe_struct.original_ast.methods:
                                 if existing_method.fun.name == sym.original_ast.fun.name:
                                     raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
+                            for existing_field_name, existing_field_type in maybe_struct.original_ast.elements:
+                                if existing_field_name == sym.original_ast.fun.name:
+                                    raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
+
                             maybe_struct.original_ast.methods.append(sym.original_ast)
                             sym.struct_symbol = maybe_struct
                             struct_found = True
@@ -856,7 +865,7 @@ class StaticChecker(BaseVisitor):
                 self.visit(sym.original_ast, my_scope)
                 my_scope.append(sym)
             elif isinstance(sym, VariableSymbol):
-                self.visit(sym.original_ast, my_scope)
+                sym.resolved_type = self.visit(sym.original_ast, my_scope)
                 my_scope.append(sym)
 
     def visitVarDecl(self, ast: AST.VarDecl, given_scope: List[ScopeObject]):
@@ -965,10 +974,16 @@ class StaticChecker(BaseVisitor):
         pass # See global_resolve_interface_definition.
 
     def visitBlock(self, ast: AST.Block, given_scope: List[ScopeObject]):
+        this_block_names = []
+
+        # Find extra banned names if we're the block of a for loop
+        loop_object: Optional[IsLoopVisit] = next(filter(lambda x: isinstance(x, IsLoopVisit), reversed(given_scope)), None)
+        if loop_object is not None and loop_object.block == ast:
+            this_block_names += loop_object.banned_names
+
         my_scope = given_scope.copy()
 
         # Vars and consts within the same block cannot collide names. Inner blocks can shadow.
-        this_block_names = []
         for statement in ast.member:
             if isinstance(statement, AST.VarDecl):
                 if statement.varName in this_block_names:
@@ -991,7 +1006,7 @@ class StaticChecker(BaseVisitor):
                 expr_type = self.visit(statement, my_scope + [IsExpressionVisit()])
                 # I guess prof. Phung doesn't want any code to discard any values.
                 if not isinstance(expr_type, AST.VoidType):
-                    raise StaticError.TypeMismatch(ast)
+                    raise StaticError.TypeMismatch(statement)
             elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
@@ -1010,7 +1025,7 @@ class StaticChecker(BaseVisitor):
                         raise e
                     # No voids allowed.
                     if isinstance(implicit_type, AST.VoidType):
-                        raise StaticError.TypeMismatch(ast)
+                        raise StaticError.TypeMismatch(statement)
 
                     sym.resolved_type = implicit_type
                     my_scope.append(sym)
@@ -1041,15 +1056,18 @@ class StaticChecker(BaseVisitor):
         if not isinstance(condition_type, AST.BoolType):
             # TODO: Ask prof. Phung whether to pass ast or ast.cond.
             raise StaticError.TypeMismatch(ast)
-        self.visit(ast.loop, given_scope + [IsLoopVisit()])
+        self.visit(ast.loop, given_scope + [IsLoopVisit(ast.loop, [])])
 
     def visitForStep(self, ast: AST.ForStep, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
+
+        banned_names: List[str] = []
 
         if isinstance(ast.init, AST.VarDecl):
             sym = VariableSymbol(ast.init.varName, ast.init)
             sym.resolved_type = self.visit(ast.init, my_scope)
             my_scope.append(sym)
+            banned_names.append(ast.init.varName)
         elif isinstance(ast.init, AST.Assign) and isinstance(ast.init.lhs, AST.Id):
             lhs: AST.Id = ast.init.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
@@ -1070,6 +1088,8 @@ class StaticChecker(BaseVisitor):
 
                 sym.resolved_type = implicit_type
                 my_scope.append(sym)
+
+                banned_names.append(lhs.name)
             else:
                 self.visit(ast.init, my_scope)
         else:
@@ -1083,7 +1103,7 @@ class StaticChecker(BaseVisitor):
 
         self.visit(ast.upda, my_scope)
 
-        my_scope += [IsLoopVisit()]
+        my_scope += [IsLoopVisit(ast.loop, banned_names)]
         self.visit(ast.loop, my_scope)
 
     def visitForEach(self, ast: AST.ForEach, given_scope: List[ScopeObject]):
@@ -1102,7 +1122,7 @@ class StaticChecker(BaseVisitor):
         else:
             value_sym.resolved_type = AST.ArrayType(iteration_target_type.dimens[1:], iteration_target_type.eleType)
 
-        my_scope += [idx_sym, value_sym, IsLoopVisit()]
+        my_scope += [idx_sym, value_sym, IsLoopVisit(ast.loop, [ast.idx.name, ast.value.name])]
         self.visit(ast.loop, my_scope)
 
     def visitContinue(self, ast: AST.Continue, given_scope: List[ScopeObject]):
