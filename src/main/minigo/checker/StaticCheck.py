@@ -930,16 +930,16 @@ class StaticChecker(BaseVisitor):
         if self_sym is None:
             raise InternalError("StaticCheck::visitMethodDecl: UnresolvedMethod for AST not present during its own visit")
 
-        # I guess treating the receiver as a parameter symbol is fine for now. It shouldn't interfere with the stuff
-        # below which is almost straight-copied from visitFuncDecl.
-        my_scope = given_scope + [FunctionParameterSymbol(ast.receiver, AST.Id(ast.receiver), ast.recType)]
+        for i, param in enumerate(ast.fun.params):
+            for existing_param in ast.fun.params[:i]:
+                if existing_param.parName == param.parName:
+                    raise StaticError.Redeclared(StaticError.Parameter(), param.parName)
 
         resolved_types = self_sym.struct_symbol.resolved_method_types[ast.fun.name]
 
+        my_scope = given_scope.copy()
+        my_scope.append(FunctionParameterSymbol(ast.receiver, AST.Id(ast.receiver), ast.recType))
         for i, param in enumerate(ast.fun.params):
-            for existing_param in filter(lambda x: isinstance(x, FunctionParameterSymbol), my_scope):
-                if existing_param.name == param.parName:
-                    raise StaticError.Redeclared(StaticError.Parameter(), param.parName)
             my_scope.append(FunctionParameterSymbol(param.parName, param, resolved_types.parameter_types[i]))
 
         current_function_scope_object = CurrentFunction(resolved_types)
