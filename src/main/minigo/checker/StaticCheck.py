@@ -527,9 +527,6 @@ class StaticChecker(BaseVisitor):
                 # TODO: Ask prof. Phung what to do when RHS is zero.
                 if isinstance(lhs, AST.IntLiteral) and isinstance(rhs, AST.IntLiteral):
                     return AST.IntLiteral(lhs.value % rhs.value)
-                elif (isinstance(lhs, AST.FloatLiteral) or isinstance(lhs, AST.IntLiteral)) and (
-                        isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
-                    return AST.FloatLiteral(float(lhs.value) % float(rhs.value))
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == ">":
@@ -887,7 +884,7 @@ class StaticChecker(BaseVisitor):
             # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26184
             raise StaticError.TypeMismatch(ast)
 
-        return implicit_type if implicit_type is not None else explicit_type
+        return explicit_type if explicit_type is not None else implicit_type
 
     def visitConstDecl(self, ast: AST.ConstDecl, given_scope: List[ScopeObject]):
         # We don't check name dupes here either; that's done by the outer layer.
@@ -906,7 +903,7 @@ class StaticChecker(BaseVisitor):
             # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26184
             raise StaticError.TypeMismatch(ast)
 
-        return implicit_type if implicit_type is not None else explicit_type
+        return explicit_type if explicit_type is not None else implicit_type
 
     def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[ScopeObject]):
         self_sym: Optional[FunctionSymbol] = next(filter(lambda x: isinstance(x, FunctionSymbol) and (x.original_ast == ast), reversed(given_scope)), None)
@@ -1159,12 +1156,17 @@ class StaticChecker(BaseVisitor):
                 return AST.StringType()
             else:
                 raise StaticError.TypeMismatch(ast)
-        elif ast.op in ["-", "*", "/", "%"]:
+        elif ast.op in ["-", "*", "/"]:
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.IntType()
             elif (isinstance(lhs, AST.FloatType) or isinstance(lhs, AST.IntType)) and (
                     isinstance(rhs, AST.FloatType) or isinstance(rhs, AST.IntType)):
                 return AST.FloatType()
+            else:
+                raise StaticError.TypeMismatch(ast)
+        elif ast.op == "%":
+            if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
+                return AST.IntType()
             else:
                 raise StaticError.TypeMismatch(ast)
         elif ast.op in [">", "<", ">=", "<=", "==", "!="]:
