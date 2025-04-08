@@ -46,6 +46,8 @@ class Symbol(ScopeObject):
 class StructSymbol(Symbol):
     original_ast: AST.StructType
 
+    associated_method_asts: List[AST.MethodDecl]
+
     resolved_field_types: Dict[str, AST.Type]
     resolved_method_types: Dict[str, ResolvedFunctionTypes]
 
@@ -55,6 +57,8 @@ class StructSymbol(Symbol):
     def __init__(self, name: str, original_ast: AST.StructType):
         super().__init__(name)
         self.original_ast = original_ast
+
+        self.associated_method_asts = []
 
         self.resolved_field_types = dict()
         self.resolved_method_types = dict()
@@ -399,11 +403,7 @@ class StaticChecker(BaseVisitor):
             for i, sym in enumerate(self.global_declarations):
                 if isinstance(sym, Symbol) and (sym.name == typename.name):
                     if isinstance(sym, StructSymbol):
-                        if sym.being_checked:
-                            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
-                        return AST.StructLiteral(typename.name, [
-                            (name, self.make_default_value(resolved_type, scoping)) for name, resolved_type in sym.resolved_field_types.items()
-                        ])
+                        return AST.StructLiteral(typename.name, [])
                     elif isinstance(sym, InterfaceSymbol):
                         return AST.NilLiteral()
                     elif (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)) and (isinstance(scoping, List) or (i < scoping)):
@@ -431,7 +431,7 @@ class StaticChecker(BaseVisitor):
                             if sym.being_checked:
                                 # Cyclic usage! It doesn't matter what is being raised here:
                                 # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26313
-                                raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+                                raise StaticError.TypeMismatch(ast)
                             if isinstance(scoping, int):
                                 # In midst of global comptime resolution! Need to resolve this const before using it.
                                 self.global_resolve_constant(sym, scoping)
@@ -443,7 +443,6 @@ class StaticChecker(BaseVisitor):
             # Function calls are not allowed at compilation-time evaluation.
             raise StaticError.TypeMismatch(ast)
         elif isinstance(ast, AST.ArrayCell):
-            # I guess we need to evaluate the entire thing.
             receiver = self.comptime_evaluate(ast.arr, scoping)
             if not isinstance(receiver, AST.ArrayLiteral):
                 raise StaticError.TypeMismatch(ast)
@@ -466,7 +465,6 @@ class StaticChecker(BaseVisitor):
             if isinstance(inner, list):
                 return AST.ArrayLiteral(resulting_dimens, receiver.eleType, inner)
         elif isinstance(ast, AST.FieldAccess):
-            # I guess we need to evaluate the entire thing.
             receiver = self.comptime_evaluate(ast.receiver, scoping)
             field = ast.field
             if not isinstance(receiver, AST.StructLiteral):
@@ -479,7 +477,13 @@ class StaticChecker(BaseVisitor):
                     if isinstance(sym, StructSymbol):
                         q: Optional[Tuple[str, AST.Expr]] = next(filter(lambda t: t[0] == field, receiver.elements), None)
                         if q is None:
-                            raise StaticError.Undeclared(StaticError.Field(), field)
+                            # Need the default value.
+                            if sym.being_checked:
+                                # Cyclic usage! It doesn't matter what is being raised here.
+                                raise StaticError.TypeMismatch(ast)
+                            if ast.field not in sym.resolved_field_types:
+                                raise StaticError.Undeclared(StaticError.Field(), field)
+                            return self.make_default_value(sym.resolved_field_types[ast.field], i if isinstance(scoping, int) else scoping)
                         return self.comptime_evaluate(q[1], scoping)
                     else:
                         raise StaticError.TypeMismatch(ast)
@@ -619,7 +623,7 @@ class StaticChecker(BaseVisitor):
                         if sym.being_checked:
                             # Cyclic usage! It doesn't matter what is being raised here:
                             # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26313
-                            raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+                            raise StaticError.TypeMismatch(ast)
                         self.global_resolve_struct_definition(sym, max(scoping, i) if isinstance(scoping, int) else scoping)
 
                         elements_ast: List[Tuple[str, AST.Expr]] = ast.elements
@@ -638,13 +642,8 @@ class StaticChecker(BaseVisitor):
                             if not self.can_cast_a_to_b(resolved_field_value_type, sym.resolved_field_types[field_name]):
                                 raise StaticError.TypeMismatch(ast)
 
-                        initialized_field_names = [y[0] for y in elements_ast]
-                        uninitialized_fields = filter(lambda x: x[0] not in initialized_field_names, sym.resolved_field_types.items())
-
                         return AST.StructLiteral(ast.name, [
                             (name, self.comptime_evaluate(val, scoping)) for name, val in elements_ast
-                        ] + [
-                            (name, self.make_default_value(sym.resolved_field_types[name], scoping)) for name, typename in uninitialized_fields
                         ])
                     else:
                         raise StaticError.TypeMismatch(ast)
@@ -748,9 +747,13 @@ class StaticChecker(BaseVisitor):
                 if isinstance(sym, Symbol) and (sym.name == typename.name):
                     if isinstance(sym, StructSymbol):
                         if sym.being_checked:
-                            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+                            # I do not care anymore.
+                            return typename
                         return self.global_resolve_struct_definition(sym, index_limit)
                     elif isinstance(sym, InterfaceSymbol):
+                        if sym.being_checked:
+                            # I do not care anymore.
+                            return typename
                         return self.global_resolve_interface_definition(sym, index_limit)
                     elif (i < index_limit) and (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)):
                         raise StaticError.TypeMismatch(typename)
@@ -814,14 +817,14 @@ class StaticChecker(BaseVisitor):
                 for maybe_struct in self.global_declarations:
                     if isinstance(maybe_struct, Symbol) and (maybe_struct.name == sym.original_ast.recType.name):
                         if isinstance(maybe_struct, StructSymbol):
-                            for existing_method in maybe_struct.original_ast.methods:
+                            for existing_method in maybe_struct.associated_method_asts:
                                 if existing_method.fun.name == sym.original_ast.fun.name:
                                     raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
                             for existing_field_name, existing_field_type in maybe_struct.original_ast.elements:
                                 if existing_field_name == sym.original_ast.fun.name:
                                     raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
 
-                            maybe_struct.original_ast.methods.append(sym.original_ast)
+                            maybe_struct.associated_method_asts.append(sym.original_ast)
                             sym.struct_symbol = maybe_struct
                             struct_found = True
 
@@ -1235,45 +1238,20 @@ class StaticChecker(BaseVisitor):
             # Resolve the type (again)
             for sym in filter(lambda x: isinstance(x, StructSymbol) or isinstance(x, InterfaceSymbol), reversed(given_scope)):
                 if sym.name == receiver_type.name:
-                    if isinstance(sym, StructSymbol):
-                        for method in sym.original_ast.methods:
-                            if method.fun.name == ast.metName:
-                                resolved_method_types = sym.resolved_method_types[ast.metName]
+                    if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
+                        if ast.metName not in sym.resolved_method_types:
+                            raise StaticError.Undeclared(StaticError.Method(), ast.metName)
 
-                                # Check arguments.
-                                if len(ast.args) != len(method.fun.params):
-                                    raise StaticError.TypeMismatch(ast)
-                                # Sanity check
-                                if len(method.fun.params) != len(resolved_method_types.parameter_types):
-                                    raise InternalError(f"StaticChecker::visitMethCall: Ran into struct method {sym.name}::{ast.metName} where len(method.fun.params) != len(resolved_method_types.parameter_types) ({len(method.fun.params)} != {len(resolved_method_types.parameter_types)})")
+                        resolved_method_types = sym.resolved_method_types[ast.metName]
+                        # Check arguments.
+                        if len(ast.args) != len(resolved_method_types.parameter_types):
+                            raise StaticError.TypeMismatch(ast)
 
-                                for i, arg in enumerate(ast.args):
-                                    arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
-                                    if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
-                                        raise StaticError.TypeMismatch(ast)
-
-                                return resolved_method_types.return_type
-                        raise StaticError.Undeclared(StaticError.Method(), ast.metName)
-                    elif isinstance(sym, InterfaceSymbol):
-                        for prototype in sym.original_ast.methods:
-                            if prototype.name == ast.metName:
-                                resolved_method_types = sym.resolved_method_types[ast.metName]
-
-                                # Check arguments.
-                                if len(ast.args) != len(prototype.params):
-                                    raise StaticError.TypeMismatch(ast)
-                                # Sanity check.
-                                if len(prototype.params) != len(resolved_method_types.parameter_types):
-                                    # Sanity check failed !!??!!!??
-                                    raise InternalError(f"StaticChecker::visitMethCall: Ran into prototype {sym.name}::{ast.metName} where len(prototype.params) != len(resolved_method_types.parameter_types) ({len(prototype.params)} != {len(resolved_method_types.parameter_types)})")
-
-                                for i, arg in enumerate(ast.args):
-                                    arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
-                                    if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
-                                        raise StaticError.TypeMismatch(ast)
-
-                                return resolved_method_types.return_type
-                        raise StaticError.Undeclared(StaticError.Method(), ast.metName)
+                        for i, arg in enumerate(ast.args):
+                            arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
+                            if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
+                                raise StaticError.TypeMismatch(ast)
+                        return resolved_method_types.return_type
                     else:
                         raise InternalError(f"StaticChecker::visitMethCall: Ran into symbol of type {sym} in non-exhaustive reflection elif chain")
         else:
