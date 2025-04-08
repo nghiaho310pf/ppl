@@ -760,6 +760,8 @@ class StaticChecker(BaseVisitor):
             raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
         elif isinstance(typename, AST.ArrayType):
             dimensions = [self.comptime_evaluate(it, index_limit) for it in typename.dimens]
+            if not all(isinstance(dimension, AST.IntLiteral) for dimension in dimensions):
+                raise StaticError.TypeMismatch(typename)
             resolved_element_type = self.global_resolve_typename(typename.eleType, index_limit)
             return AST.ArrayType(dimensions, resolved_element_type)
         return typename
@@ -965,7 +967,10 @@ class StaticChecker(BaseVisitor):
 
     def visitArrayType(self, ast: AST.ArrayType, given_scope: List[ScopeObject]):
         # Evaluate indices so we can type-check.
-        return AST.ArrayType([self.comptime_evaluate(it, given_scope) for it in ast.dimens], ast.eleType)
+        dimensions = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
+        if not all(isinstance(dimension, AST.IntLiteral) for dimension in dimensions):
+            raise StaticError.TypeMismatch(ast)
+        return AST.ArrayType(dimensions, ast.eleType)
 
     def visitStructType(self, ast: AST.StructType, given_scope: List[ScopeObject]):
         pass # See global_resolve_struct_definition.
@@ -1333,6 +1338,8 @@ class StaticChecker(BaseVisitor):
 
     def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[ScopeObject]):
         dimensions = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
+        if not all(isinstance(dimension, AST.IntLiteral) for dimension in dimensions):
+            raise StaticError.TypeMismatch(ast)
         ele_type = self.visit(ast.eleType, given_scope + [IsTypenameVisit()])
         self.check_nested_list(ast, ast.value, ele_type, dimensions, given_scope)
         return AST.ArrayType(dimensions, ele_type)
