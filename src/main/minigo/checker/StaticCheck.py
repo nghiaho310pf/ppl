@@ -432,9 +432,12 @@ class StaticChecker(BaseVisitor):
                                 # In midst of global comptime resolution! Need to resolve this const before using it.
                                 self.global_resolve_constant(sym, scoping)
                             return sym.resolved_value
-                    elif isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol) or isinstance(sym, FunctionSymbol) or isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
+                    elif isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol) or isinstance(sym, FunctionSymbol):
                         # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26183
                         raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
+                    elif isinstance(sym, VariableSymbol) or isinstance(sym, FunctionParameterSymbol):
+                        # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26183
+                        raise StaticError.TypeMismatch(ast)
                     else:
                         raise InternalError(f"StaticChecker::comptime_evaluate: Ran into symbol of type {sym} in non-exhaustive reflection elif chain")
             raise StaticError.Undeclared(StaticError.Identifier(), ast.name)
@@ -675,6 +678,12 @@ class StaticChecker(BaseVisitor):
         sym.being_checked = True
         for i, element in enumerate(sym.original_ast.elements):
             field_name, field_type = element
+            for j, glob_sym in enumerate(self.global_declarations[:index_limit]):
+                if isinstance(glob_sym, UnresolvedMethod):
+                    that_recv_type = glob_sym.original_ast.recType
+                    if isinstance(that_recv_type, AST.Id):
+                        if that_recv_type.name == sym.name and glob_sym.original_ast.fun.name == field_name:
+                            raise StaticError.Redeclared(StaticError.Field(), element[0])
             for existing_field_name, existing_field_type in sym.original_ast.elements[:i]:
                 if field_name == existing_field_name:
                     raise StaticError.Redeclared(StaticError.Field(), element[0])
@@ -821,9 +830,6 @@ class StaticChecker(BaseVisitor):
                             for existing_method in maybe_struct.associated_method_asts:
                                 if existing_method.fun.name == sym.original_ast.fun.name:
                                     raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
-                            for existing_field_name, existing_field_type in maybe_struct.original_ast.elements:
-                                if existing_field_name == sym.original_ast.fun.name:
-                                    raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
 
                             maybe_struct.associated_method_asts.append(sym.original_ast)
                             sym.struct_symbol = maybe_struct
@@ -858,6 +864,9 @@ class StaticChecker(BaseVisitor):
             elif isinstance(sym, FunctionSymbol) and isinstance(sym.original_ast, AST.FuncDecl):
                 self.visit(sym.original_ast, my_scope)
             elif isinstance(sym, UnresolvedMethod):
+                for existing_field_name, existing_field_type in sym.struct_symbol.original_ast.elements:
+                    if existing_field_name == sym.original_ast.fun.name:
+                        raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
                 self.visit(sym.original_ast, my_scope + [sym])
             elif isinstance(sym, ConstantSymbol):
                 self.visit(sym.original_ast, my_scope)
@@ -1161,13 +1170,13 @@ class StaticChecker(BaseVisitor):
         if current_function is None:
             return # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26258
 
-        if isinstance(current_function.resolved_types.return_type, AST.VoidType):
-            if ast.expr is not None:
+        if ast.expr is None:
+            if not isinstance(current_function.resolved_types.return_type, AST.VoidType):
                 raise StaticError.TypeMismatch(ast)
         else:
-            if ast.expr is None:
-                raise StaticError.TypeMismatch(ast)
             expr_type = self.visit(ast.expr, given_scope + [IsExpressionVisit()])
+            if isinstance(current_function.resolved_types.return_type, AST.VoidType):
+                raise StaticError.TypeMismatch(ast)
             if not self.hard_compare_types(expr_type, current_function.resolved_types.return_type):
                 raise StaticError.TypeMismatch(ast)
 
