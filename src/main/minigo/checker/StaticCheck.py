@@ -267,9 +267,19 @@ class StaticChecker(BaseVisitor):
             return not has_mismatched_method
 
         if isinstance(a, AST.ArrayType) and isinstance(b, AST.ArrayType):
-            return self.can_cast_a_to_b(a.eleType, b.eleType) and len(a.dimens) == len(b.dimens) and all(
-                isinstance(a, AST.IntLiteral) and isinstance(b, AST.IntLiteral) and a.value == b.value for a, b in
-                zip(a.dimens, b.dimens))
+            if len(a.dimens) != len(b.dimens):
+                return False
+            if not all(isinstance(ad, AST.IntLiteral) for ad in a.dimens):
+                return False
+            if not all(isinstance(bd, AST.IntLiteral) for bd in a.dimens):
+                return False
+            aq: List[AST.IntLiteral] = a.dimens
+            bq: List[AST.IntLiteral] = b.dimens
+            if not all(a.value == b.value for a, b in zip(aq, bq)):
+                return False
+            if isinstance(a.eleType, AST.IntType) and isinstance(b.eleType, AST.FloatType):
+                return True
+            return self.hard_compare_types(a.eleType, b.eleType)
 
         return type(a) == type(b)
 
@@ -678,12 +688,6 @@ class StaticChecker(BaseVisitor):
         sym.being_checked = True
         for i, element in enumerate(sym.original_ast.elements):
             field_name, field_type = element
-            for j, glob_sym in enumerate(self.global_declarations[:index_limit]):
-                if isinstance(glob_sym, UnresolvedMethod):
-                    that_recv_type = glob_sym.original_ast.recType
-                    if isinstance(that_recv_type, AST.Id):
-                        if that_recv_type.name == sym.name and glob_sym.original_ast.fun.name == field_name:
-                            raise StaticError.Redeclared(StaticError.Field(), element[0])
             for existing_field_name, existing_field_type in sym.original_ast.elements[:i]:
                 if field_name == existing_field_name:
                     raise StaticError.Redeclared(StaticError.Field(), element[0])
@@ -830,6 +834,9 @@ class StaticChecker(BaseVisitor):
                             for existing_method in maybe_struct.associated_method_asts:
                                 if existing_method.fun.name == sym.original_ast.fun.name:
                                     raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
+                            for existing_field_name, existing_field_type in maybe_struct.original_ast.elements:
+                                if existing_field_name == sym.original_ast.fun.name:
+                                    raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
 
                             maybe_struct.associated_method_asts.append(sym.original_ast)
                             sym.struct_symbol = maybe_struct
@@ -864,9 +871,6 @@ class StaticChecker(BaseVisitor):
             elif isinstance(sym, FunctionSymbol) and isinstance(sym.original_ast, AST.FuncDecl):
                 self.visit(sym.original_ast, my_scope)
             elif isinstance(sym, UnresolvedMethod):
-                for existing_field_name, existing_field_type in sym.struct_symbol.original_ast.elements:
-                    if existing_field_name == sym.original_ast.fun.name:
-                        raise StaticError.Redeclared(StaticError.Method(), sym.original_ast.fun.name)
                 self.visit(sym.original_ast, my_scope + [sym])
             elif isinstance(sym, ConstantSymbol):
                 self.visit(sym.original_ast, my_scope)
