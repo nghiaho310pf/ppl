@@ -890,7 +890,6 @@ class StaticChecker(BaseVisitor):
         if isinstance(implicit_type, AST.VoidType):
             raise StaticError.TypeMismatch(ast.varInit)
         if (explicit_type is not None) and (implicit_type is not None) and (not self.can_cast_a_to_b(implicit_type, explicit_type)):
-            # TODO: ask prof. Phung why we have to pass ast instead of ast.varInit. Cite "Test Before Submitting".
             raise StaticError.TypeMismatch(ast)
 
         if (explicit_type is None) and isinstance(implicit_type, NilType):
