@@ -131,21 +131,25 @@ class TestChecker:
             asttree = input
 
         checker = StaticChecker(asttree)
-        try:
+        rawdog_it = False
+        if rawdog_it:
             res = checker.check()
-        except StaticError as e:
-            dest.write(str(e) + '\n')
+        else:
+            try:
+                res = checker.check()
+            except StaticError as e:
+                dest.write(str(e) + '\n')
 
-        line = dest.getvalue()
+            line = dest.getvalue().strip()
+            expect = expect.strip()
 
-        if line != expect:
-            # Just clean it up
-            if expect.endswith("\n") and line.endswith("\n"):
-                expect = expect[:-1]
-                line = line[:-1]
-            raise Exception(f"Expected {expect}\n"
-                            f"              found {line}")
-        # res = checker.check()
+            if line != expect:
+                # Just clean it up
+                if expect.endswith("\n") and line.endswith("\n"):
+                    expect = expect[:-1]
+                    line = line[:-1]
+                raise Exception(f"Expected {expect}\n"
+                                f"              found {line}")
 
         # return line == expect
         return True
