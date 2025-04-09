@@ -417,8 +417,8 @@ class StaticChecker(BaseVisitor):
                     elif isinstance(sym, InterfaceSymbol):
                         return AST.NilLiteral()
                     elif (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)) and (isinstance(scoping, List) or (i < scoping)):
-                        raise StaticError.TypeMismatch(typename)
-            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+                        raise StaticError.Undeclared(StaticError.Type(), typename.name)
+            raise StaticError.Undeclared(StaticError.Type(), typename.name)
         return AST.NilLiteral()
 
     # Unified from global_comptime_evaluate and local_comptime_evaluate.
@@ -769,7 +769,7 @@ class StaticChecker(BaseVisitor):
                         return self.global_resolve_interface_definition(sym, index_limit)
                     elif (i < index_limit) and (isinstance(sym, ConstantSymbol) or isinstance(sym, VariableSymbol)):
                         raise StaticError.Undeclared(StaticError.Type(), typename.name)
-            raise StaticError.Undeclared(StaticError.Identifier(), typename.name)
+            raise StaticError.Undeclared(StaticError.Type(), typename.name)
         elif isinstance(typename, AST.ArrayType):
             dimensions = [self.comptime_evaluate(it, index_limit) for it in typename.dimens]
             if not all(isinstance(dimension, AST.IntLiteral) for dimension in dimensions):
@@ -977,7 +977,9 @@ class StaticChecker(BaseVisitor):
         dimensions = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
         if not all(isinstance(dimension, AST.IntLiteral) for dimension in dimensions):
             raise StaticError.TypeMismatch(ast)
-        return AST.ArrayType(dimensions, ast.eleType)
+        # No need to append IsTypenameVisit.
+        resolved_element_type = self.visit(ast.eleType, given_scope)
+        return AST.ArrayType(dimensions, resolved_element_type)
 
     def visitStructType(self, ast: AST.StructType, given_scope: List[ScopeObject]):
         pass # See global_resolve_struct_definition.
