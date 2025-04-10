@@ -353,6 +353,8 @@ class CheckSuite(unittest.TestCase):
     def test_name_shadowing_6(self):
         i = Program([
             FuncDecl("f", [], VoidType(), Block([
+                VarDecl("i", IntType(), None),
+                VarDecl("it", IntType(), None),
                 ForEach(
                     Id("i"),
                     Id("it"),
@@ -364,7 +366,7 @@ class CheckSuite(unittest.TestCase):
                 )
             ]))
         ])
-        self.assertTrue(TestChecker.test(i, "Redeclared Variable: i\n", make_test_number()))
+        self.assertTrue(TestChecker.test(i, "", make_test_number()))
 
     def test_implicit_declaration_1(self):
         i = Program([

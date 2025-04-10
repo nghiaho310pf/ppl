@@ -1146,20 +1146,26 @@ class StaticChecker(BaseVisitor):
     def visitForEach(self, ast: AST.ForEach, given_scope: List[ScopeObject]):
         my_scope = given_scope.copy()
 
+        # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26554
+        idx_sym = next(filter(lambda x: isinstance(x, Symbol) and (x.name == ast.idx.name), reversed(my_scope)), None)
+        if idx_sym is None or not isinstance(idx_sym, VariableSymbol):
+            raise StaticError.Undeclared(StaticError.Identifier(), ast.idx.name)
+        if not isinstance(idx_sym.resolved_type, AST.IntType):
+            raise StaticError.TypeMismatch(ast)
+
+        value_sym = next(filter(lambda x: isinstance(x, Symbol) and (x.name == ast.value.name), reversed(my_scope)), None)
+        if value_sym is None or not isinstance(value_sym, VariableSymbol):
+            raise StaticError.Undeclared(StaticError.Identifier(), ast.value.name)
+
         iteration_target_type = self.visit(ast.arr, my_scope + [IsExpressionVisit()])
         if not isinstance(iteration_target_type, AST.ArrayType):
             raise StaticError.TypeMismatch(ast)
 
-        idx_sym = VariableSymbol(ast.idx.name, ast.idx)
-        idx_sym.resolved_type = AST.IntType()
+        required_value_type = iteration_target_type.eleType if len(iteration_target_type.dimens) == 1 else AST.ArrayType(iteration_target_type.dimens[1:], iteration_target_type.eleType)
+        if not self.hard_compare_types(required_value_type, value_sym.resolved_type):
+            raise StaticError.TypeMismatch(ast)
 
-        value_sym = VariableSymbol(ast.value.name, ast.value)
-        if len(iteration_target_type.dimens) == 1:
-            value_sym.resolved_type = iteration_target_type.eleType
-        else:
-            value_sym.resolved_type = AST.ArrayType(iteration_target_type.dimens[1:], iteration_target_type.eleType)
-
-        my_scope += [idx_sym, value_sym, IsLoopVisit(ast.loop, [ast.idx.name, ast.value.name])]
+        my_scope += [IsLoopVisit(ast.loop, [])]
         self.visit(ast.loop, my_scope)
 
     def visitContinue(self, ast: AST.Continue, given_scope: List[ScopeObject]):
