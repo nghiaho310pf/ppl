@@ -1146,13 +1146,13 @@ class StaticChecker(BaseVisitor):
 
         # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26554
         idx_sym = next(filter(lambda x: isinstance(x, Symbol) and (x.name == ast.idx.name), reversed(my_scope)), None)
-        if idx_sym is None or not isinstance(idx_sym, VariableSymbol):
+        if idx_sym is None or not (isinstance(idx_sym, VariableSymbol) or isinstance(idx_sym, FunctionParameterSymbol)):
             raise StaticError.Undeclared(StaticError.Identifier(), ast.idx.name)
         if not isinstance(idx_sym.resolved_type, AST.IntType):
             raise StaticError.TypeMismatch(ast)
 
         value_sym = next(filter(lambda x: isinstance(x, Symbol) and (x.name == ast.value.name), reversed(my_scope)), None)
-        if value_sym is None or not isinstance(value_sym, VariableSymbol):
+        if value_sym is None or not (isinstance(value_sym, VariableSymbol) or isinstance(value_sym, FunctionParameterSymbol)):
             raise StaticError.Undeclared(StaticError.Identifier(), ast.value.name)
 
         iteration_target_type = self.visit(ast.arr, my_scope + [IsExpressionVisit()])
