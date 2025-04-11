@@ -1025,7 +1025,7 @@ class StaticChecker(BaseVisitor):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
                 existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
-                if existing_maybe_variable is None:
+                if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol)):
                     this_block_names.append(lhs.name)
 
                     sym = VariableSymbol(lhs.name, statement)
@@ -1084,7 +1084,7 @@ class StaticChecker(BaseVisitor):
             lhs: AST.Id = ast.init.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
             existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
-            if existing_maybe_variable is None:
+            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol)):
                 sym = VariableSymbol(lhs.name, ast.init)
 
                 try:
@@ -1116,7 +1116,7 @@ class StaticChecker(BaseVisitor):
             lhs: AST.Id = ast.upda.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
             existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
-            if existing_maybe_variable is None:
+            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol)):
                 sym = VariableSymbol(lhs.name, ast.upda)
 
                 try:
