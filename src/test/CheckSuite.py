@@ -853,17 +853,16 @@ class CheckSuite(unittest.TestCase):
         ])
         self.assertTrue(TestChecker.test(i, "", make_test_number()))
 
-    def test_const_array_dim_6(self):
+    def test_scope_poisoning_1(self):
         i = Program([
-            ConstDecl("dim", IntType(), UnaryOp("-", IntLiteral(-5))),
-            FuncDecl("main", [], VoidType(), Block([
-                VarDecl("arr", ArrayType([Id("dim")], IntType()), ArrayLiteral([Id("dim")], IntType(),
-                                                                               [IntLiteral(1), IntLiteral(2),
-                                                                                IntLiteral(3), IntLiteral(4),
-                                                                                IntLiteral(5)])),
-                Assign(Id("arr"), ArrayLiteral([Id("dim")], IntType(),
-                                               [IntLiteral(6), IntLiteral(7), IntLiteral(8), IntLiteral(9),
-                                                IntLiteral(10)]))
+            StructType("Q", [("i", IntType())], []),
+            FuncDecl("A", [], Id("Q"), Block([
+                Return(StructLiteral("Q", [("i", IntLiteral(1))]))
+            ])),
+            FuncDecl("B", [], VoidType(), Block([
+                VarDecl("a", IntType(), None),
+                ConstDecl("Q", IntType(), IntLiteral(2)),
+                Assign(Id("a"), FieldAccess(FuncCall("A", []), "i"))
             ]))
         ])
         self.assertTrue(TestChecker.test(i, "", make_test_number()))
