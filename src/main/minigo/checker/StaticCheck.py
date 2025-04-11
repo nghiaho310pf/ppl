@@ -483,24 +483,22 @@ class StaticChecker(BaseVisitor):
                 raise StaticError.TypeMismatch(ast)
 
             # Resolve the type.
-            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, Symbol), reversed(scoping))
-            for i, sym in enumerate(symbols):
-                if isinstance(sym, Symbol) and (receiver.name == sym.name):
-                    if isinstance(sym, StructSymbol):
-                        q: Optional[Tuple[str, AST.Expr]] = next(filter(lambda t: t[0] == field, receiver.elements), None)
-                        if q is None:
-                            # Need the default value.
-                            if sym.being_checked:
-                                # Cyclic usage! It doesn't matter what is being raised here.
-                                raise StaticError.TypeMismatch(ast)
-                            if ast.field not in sym.resolved_field_types:
-                                raise StaticError.Undeclared(StaticError.Field(), field)
-                            return self.make_default_value(sym.resolved_field_types[ast.field], i if isinstance(scoping, int) else scoping)
-                        return self.comptime_evaluate(q[1], scoping)
-                    else:
-                        raise StaticError.Undeclared(StaticError.Type(), receiver.name)
-            # Never happens.
-            raise StaticError.Undeclared(StaticError.Identifier(), receiver.name)
+            struct_sym = next(filter(lambda s: isinstance(s, StructSymbol) and s.name == receiver.name, self.global_declarations))
+            if struct_sym is None:
+                # Probably never happens.
+                raise StaticError.Undeclared(StaticError.Type(), receiver.name)
+
+            q: Optional[Tuple[str, AST.Expr]] = next(filter(lambda t: t[0] == field, receiver.elements), None)
+            if q is None:
+                # Need the default value.
+                if struct_sym.being_checked:
+                    # Cyclic usage! It doesn't matter what is being raised here.
+                    raise StaticError.TypeMismatch(ast)
+                if ast.field not in struct_sym.resolved_field_types:
+                    raise StaticError.Undeclared(StaticError.Field(), field)
+                return self.make_default_value(struct_sym.resolved_field_types[ast.field], scoping)
+            return self.comptime_evaluate(q[1], scoping)
+
         elif isinstance(ast, AST.BinaryOp):
             lhs = self.comptime_evaluate(ast.left, scoping)
             rhs = self.comptime_evaluate(ast.right, scoping)
@@ -1025,7 +1023,7 @@ class StaticChecker(BaseVisitor):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
                 existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
-                if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol)):
+                if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol) or isinstance(existing_maybe_variable, FunctionParameterSymbol)):
                     this_block_names.append(lhs.name)
 
                     sym = VariableSymbol(lhs.name, statement)
@@ -1084,7 +1082,7 @@ class StaticChecker(BaseVisitor):
             lhs: AST.Id = ast.init.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
             existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
-            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol)):
+            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol) or isinstance(existing_maybe_variable, FunctionParameterSymbol)):
                 sym = VariableSymbol(lhs.name, ast.init)
 
                 try:
@@ -1116,7 +1114,7 @@ class StaticChecker(BaseVisitor):
             lhs: AST.Id = ast.upda.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
             existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
-            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol)):
+            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol) or isinstance(existing_maybe_variable, FunctionParameterSymbol)):
                 sym = VariableSymbol(lhs.name, ast.upda)
 
                 try:
