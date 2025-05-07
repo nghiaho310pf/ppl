@@ -5,6 +5,7 @@
  *   This file provides a simple version of code generator
  *
 '''
+from AST import IntType, VoidType, ArrayType, StringType
 from Utils import *
 from StaticCheck import *
 from StaticError import *

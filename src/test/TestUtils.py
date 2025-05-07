@@ -1,3 +1,5 @@
+import os
+import subprocess
 from io import StringIO
 
 from antlr4 import *
@@ -9,6 +11,9 @@ from StaticError import StaticError
 from StaticCheck import StaticChecker
 from lexererr import *
 from ASTGeneration import ASTGeneration
+from CodeGenerator import CodeGenerator
+from run import JAVA_EXE_PATH
+
 
 class TestLexer:
     @staticmethod
@@ -154,25 +159,65 @@ class TestChecker:
         # return line == expect
         return True
 
-    # @staticmethod
-    # def test1(inputdir, outputdir, num):
-    #
-    #     dest = open(outputdir + "/" + str(num) + ".txt", "w")
-    #
-    #     try:
-    #         lexer = MiniGoLexer(FileStream(inputdir + "/" + str(num) + ".txt"))
-    #         tokens = CommonTokenStream(lexer)
-    #         parser = MiniGoParser(tokens)
-    #         tree = parser.program()
-    #         asttree = ASTGeneration().visit(tree)
-    #
-    #         checker = StaticChecker(asttree)
-    #         res = checker.check()
-    #
-    #     except StaticError as e:
-    #         dest.write(str(e) + '\n')
-    #     except:
-    #         trace = traceback.format_exc()
-    #         print("Test " + str(num) + " catches unexpected error:" + trace + "\n")
-    #     finally:
-    #         dest.close()
+class TestCodeGen():
+    @staticmethod
+    def test(input, expect, num):
+        return TestCodeGen.check(input, expect, num)
+
+    @staticmethod
+    def check(input, expect, num):
+        if type(input) is str:
+            input_stream = InputStream(input)
+            lexer = MiniGoLexer(input_stream)
+            tokens = CommonTokenStream(lexer)
+            parser = MiniGoParser(tokens)
+            tree = parser.program()
+            asttree = ASTGeneration().visit(tree)
+        else:
+            asttree = input
+
+        jasmin_output_path = f"./test/solutions/{num}"
+        os.makedirs(jasmin_output_path, exist_ok=True)
+
+        output_path = os.path.join(jasmin_output_path, "out.txt")
+        JASMIN_JAR = "../../../external/jasmin.jar"
+
+        with open(output_path, "w") as dest:
+            codeGen = CodeGenerator()
+            try:
+                codeGen.gen(asttree, jasmin_output_path)
+
+                subprocess.call(
+                    f"{JAVA_EXE_PATH} -jar {JASMIN_JAR} *.j",
+                    shell=True,
+                    stderr=subprocess.STDOUT,
+                    cwd=jasmin_output_path
+                )
+
+                subprocess.run(
+                    f"{JAVA_EXE_PATH} -cp .{os.pathsep}../../../lib MiniGoClass",
+                    shell=True,
+                    stdout=dest,
+                    timeout=10,
+                    cwd=jasmin_output_path
+                )
+
+            except StaticError as e:
+                dest.write(str(e))
+            except subprocess.TimeoutExpired:
+                dest.write("Time out\n")
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"command '{e.cmd}' returned with error (code {e.returncode}): {e.output}")
+
+        with open(output_path, "r") as dest:
+            line = dest.read().strip()
+            expect = expect.strip()
+
+            if line != expect:
+                if expect.endswith("\n") and line.endswith("\n"):
+                    expect = expect[:-1]
+                    line = line[:-1]
+                raise Exception(f"Expected {expect}\n"
+                                f"              found {line}")
+
+            return line == expect

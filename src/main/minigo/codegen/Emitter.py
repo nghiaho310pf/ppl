@@ -3,7 +3,7 @@ from StaticCheck import *
 from StaticError import *
 import CodeGenerator as cgen
 from MachineCode import JasminCode
-
+from AST import IntType, VoidType, ArrayType, StringType
 
 
 class Emitter():

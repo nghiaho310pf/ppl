@@ -8,6 +8,27 @@ from Visitor import *
 from typing import List, Tuple, Optional, Union, Dict
 import StaticError
 
+# Preserved for BTL4
+
+class MType:
+    def __init__(self,partype,rettype):
+        self.partype = partype
+        self.rettype = rettype
+
+    def __str__(self):
+        return "MType([" + ",".join(str(x) for x in self.partype) + "]," + str(self.rettype) + ")"
+
+class Symbol:
+    def __init__(self,name,mtype,value = None):
+        self.name = name
+        self.mtype = mtype
+        self.value = value
+
+    def __str__(self):
+        return "Symbol(" + str(self.name) + "," + str(self.mtype) + ("" if self.value is None else "," + str(self.value)) + ")"
+
+# Actual useful stuff
+
 class InternalError(Exception):
     def __init__(self, message: str):
         self.message = message
@@ -36,14 +57,14 @@ class ResolvedFunctionTypes:
 
 # For name resolution.
 
-class Symbol(ScopeObject):
+class ScopedSymbol(ScopeObject):
     name: str
 
     def __init__(self, name: str):
         super().__init__()
         self.name = name
 
-class StructSymbol(Symbol):
+class StructSymbol(ScopedSymbol):
     original_ast: AST.StructType
 
     associated_method_asts: List[AST.MethodDecl]
@@ -66,7 +87,7 @@ class StructSymbol(Symbol):
         self.being_checked = False
         self.done_resolving = False
 
-class InterfaceSymbol(Symbol):
+class InterfaceSymbol(ScopedSymbol):
     original_ast: AST.InterfaceType
 
     resolved_method_types: Dict[str, ResolvedFunctionTypes]
@@ -83,7 +104,7 @@ class InterfaceSymbol(Symbol):
         self.being_checked = False
         self.done_resolving = False
 
-class FunctionSymbol(Symbol):
+class FunctionSymbol(ScopedSymbol):
     original_ast: AST.AST
     resolved_types: ResolvedFunctionTypes
     done_resolving: bool
@@ -94,7 +115,7 @@ class FunctionSymbol(Symbol):
         self.resolved_types = ResolvedFunctionTypes()
         self.done_resolving = False
 
-class VariableSymbol(Symbol):
+class VariableSymbol(ScopedSymbol):
     original_ast: Union[AST.VarDecl, AST.Assign, AST.Id]
 
     resolved_explicit_type: Optional[AST.Type]
@@ -107,7 +128,7 @@ class VariableSymbol(Symbol):
         self.resolved_explicit_type = None
         self.resolved_type = None
 
-class ConstantSymbol(Symbol):
+class ConstantSymbol(ScopedSymbol):
     original_ast: AST.ConstDecl
     global_symbol_index: Optional[int]
 
@@ -128,7 +149,7 @@ class ConstantSymbol(Symbol):
         self.being_checked = False
         self.done_resolving = False
 
-class FunctionParameterSymbol(Symbol):
+class FunctionParameterSymbol(ScopedSymbol):
     original_ast: Union[AST.ParamDecl, AST.Id]
     resolved_type: Optional[AST.Type]
 
@@ -411,7 +432,7 @@ class StaticChecker(BaseVisitor):
             return AST.ArrayLiteral(typename.dimens, typename.eleType, vals)
         elif isinstance(typename, AST.Id):
             for i, sym in enumerate(self.global_declarations):
-                if isinstance(sym, Symbol) and (sym.name == typename.name):
+                if isinstance(sym, ScopedSymbol) and (sym.name == typename.name):
                     if isinstance(sym, StructSymbol):
                         return AST.StructLiteral(typename.name, [])
                     elif isinstance(sym, InterfaceSymbol):
@@ -429,9 +450,9 @@ class StaticChecker(BaseVisitor):
     #   - pass a List[ScopeObject] for local scoping.
     def comptime_evaluate(self, ast: AST.Expr, scoping: Union[int, List[ScopeObject]]):
         if isinstance(ast, AST.Id):
-            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, Symbol), reversed(scoping))
+            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, ScopedSymbol), reversed(scoping))
             for i, sym in enumerate(symbols):
-                if isinstance(sym, Symbol) and (sym.name == ast.name):
+                if isinstance(sym, ScopedSymbol) and (sym.name == ast.name):
                     if isinstance(sym, ConstantSymbol):
                         if isinstance(scoping, List) or i < scoping:
                             if sym.being_checked:
@@ -626,9 +647,9 @@ class StaticChecker(BaseVisitor):
             else:
                 raise StaticError.TypeMismatch(ast)
         elif isinstance(ast, AST.StructLiteral):
-            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, Symbol), reversed(scoping))
+            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, ScopedSymbol), reversed(scoping))
             for i, sym in enumerate(symbols):
-                if isinstance(sym, Symbol) and (sym.name == ast.name):
+                if isinstance(sym, ScopedSymbol) and (sym.name == ast.name):
                     if isinstance(sym, StructSymbol):
                         if sym.being_checked:
                             # Cyclic usage! It doesn't matter what is being raised here:
@@ -754,7 +775,7 @@ class StaticChecker(BaseVisitor):
     def global_resolve_typename(self, typename: AST.Type, index_limit: int):
         if isinstance(typename, AST.Id):
             for i, sym in enumerate(self.global_declarations):
-                if isinstance(sym, Symbol) and (sym.name == typename.name):
+                if isinstance(sym, ScopedSymbol) and (sym.name == typename.name):
                     if isinstance(sym, StructSymbol):
                         if sym.being_checked:
                             # I do not care anymore.
@@ -782,17 +803,17 @@ class StaticChecker(BaseVisitor):
     def visitProgram(self, ast: AST.Program, given_scope: List[ScopeObject]):
         for thing in ast.decl:
             if isinstance(thing, AST.StructType):
-                for existing_unresolved_symbol in filter(lambda x: isinstance(x, Symbol), self.global_declarations):
+                for existing_unresolved_symbol in filter(lambda x: isinstance(x, ScopedSymbol), self.global_declarations):
                     if thing.name == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
                 self.global_declarations.append(StructSymbol(thing.name, thing))
             elif isinstance(thing, AST.InterfaceType):
-                for existing_unresolved_symbol in filter(lambda x: isinstance(x, Symbol), self.global_declarations):
+                for existing_unresolved_symbol in filter(lambda x: isinstance(x, ScopedSymbol), self.global_declarations):
                     if thing.name == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Type(), thing.name)
                 self.global_declarations.append(InterfaceSymbol(thing.name, thing))
             elif isinstance(thing, AST.FuncDecl):
-                for existing_unresolved_symbol in filter(lambda x: isinstance(x, Symbol), self.global_declarations):
+                for existing_unresolved_symbol in filter(lambda x: isinstance(x, ScopedSymbol), self.global_declarations):
                     if thing.name == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Function(), thing.name)
                 self.global_declarations.append(FunctionSymbol(thing.name, thing))
@@ -805,12 +826,12 @@ class StaticChecker(BaseVisitor):
 
                 self.global_declarations.append(UnresolvedMethod(thing))
             elif isinstance(thing, AST.ConstDecl):
-                for existing_unresolved_symbol in filter(lambda x: isinstance(x, Symbol), self.global_declarations):
+                for existing_unresolved_symbol in filter(lambda x: isinstance(x, ScopedSymbol), self.global_declarations):
                     if thing.conName == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Constant(), thing.conName)
                 self.global_declarations.append(ConstantSymbol(thing.conName, thing))
             elif isinstance(thing, AST.VarDecl):
-                for existing_unresolved_symbol in filter(lambda x: isinstance(x, Symbol), self.global_declarations):
+                for existing_unresolved_symbol in filter(lambda x: isinstance(x, ScopedSymbol), self.global_declarations):
                     if thing.varName == existing_unresolved_symbol.name:
                         raise StaticError.Redeclared(StaticError.Variable(), thing.varName)
                 self.global_declarations.append(VariableSymbol(thing.varName, thing))
@@ -827,7 +848,7 @@ class StaticChecker(BaseVisitor):
             elif isinstance(sym, UnresolvedMethod):
                 struct_found = False
                 for maybe_struct in self.global_declarations:
-                    if isinstance(maybe_struct, Symbol) and (maybe_struct.name == sym.original_ast.recType.name):
+                    if isinstance(maybe_struct, ScopedSymbol) and (maybe_struct.name == sym.original_ast.recType.name):
                         if isinstance(maybe_struct, StructSymbol):
                             for existing_method in maybe_struct.associated_method_asts:
                                 if existing_method.fun.name == sym.original_ast.fun.name:
@@ -1022,7 +1043,7 @@ class StaticChecker(BaseVisitor):
             elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
-                existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
+                existing_maybe_variable = next(filter(lambda x: isinstance(x, ScopedSymbol) and (x.name == lhs.name), reversed(my_scope)), None)
                 if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol) or isinstance(existing_maybe_variable, FunctionParameterSymbol)):
                     this_block_names.append(lhs.name)
 
@@ -1081,7 +1102,7 @@ class StaticChecker(BaseVisitor):
         elif isinstance(ast.init, AST.Assign) and isinstance(ast.init.lhs, AST.Id):
             lhs: AST.Id = ast.init.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
-            existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
+            existing_maybe_variable = next(filter(lambda x: isinstance(x, ScopedSymbol) and (x.name == lhs.name), reversed(my_scope)), None)
             if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol) or isinstance(existing_maybe_variable, FunctionParameterSymbol)):
                 sym = VariableSymbol(lhs.name, ast.init)
 
@@ -1113,7 +1134,7 @@ class StaticChecker(BaseVisitor):
         if isinstance(ast.upda.lhs, AST.Id):
             lhs: AST.Id = ast.upda.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
-            existing_maybe_variable = next(filter(lambda x: isinstance(x, Symbol) and (x.name == lhs.name), reversed(my_scope)), None)
+            existing_maybe_variable = next(filter(lambda x: isinstance(x, ScopedSymbol) and (x.name == lhs.name), reversed(my_scope)), None)
             if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VariableSymbol) or isinstance(existing_maybe_variable, ConstantSymbol) or isinstance(existing_maybe_variable, FunctionParameterSymbol)):
                 sym = VariableSymbol(lhs.name, ast.upda)
 
@@ -1145,13 +1166,13 @@ class StaticChecker(BaseVisitor):
         my_scope = given_scope.copy()
 
         # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26554
-        idx_sym = next(filter(lambda x: isinstance(x, Symbol) and (x.name == ast.idx.name), reversed(my_scope)), None)
+        idx_sym = next(filter(lambda x: isinstance(x, ScopedSymbol) and (x.name == ast.idx.name), reversed(my_scope)), None)
         if idx_sym is None or not (isinstance(idx_sym, VariableSymbol) or isinstance(idx_sym, FunctionParameterSymbol)):
             raise StaticError.Undeclared(StaticError.Identifier(), ast.idx.name)
         if not isinstance(idx_sym.resolved_type, AST.IntType):
             raise StaticError.TypeMismatch(ast)
 
-        value_sym = next(filter(lambda x: isinstance(x, Symbol) and (x.name == ast.value.name), reversed(my_scope)), None)
+        value_sym = next(filter(lambda x: isinstance(x, ScopedSymbol) and (x.name == ast.value.name), reversed(my_scope)), None)
         if value_sym is None or not (isinstance(value_sym, VariableSymbol) or isinstance(value_sym, FunctionParameterSymbol)):
             raise StaticError.Undeclared(StaticError.Identifier(), ast.value.name)
 
@@ -1248,7 +1269,7 @@ class StaticChecker(BaseVisitor):
             raise StaticError.TypeMismatch(ast)
 
     def visitFuncCall(self, ast: AST.FuncCall, given_scope: List[ScopeObject]):
-        for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+        for sym in filter(lambda x: isinstance(x, ScopedSymbol), reversed(given_scope)):
             if sym.name == ast.funName:
                 if isinstance(sym, FunctionSymbol):
                     # There used to be a IsComptimeExpressionVisit check here, but:
@@ -1298,7 +1319,7 @@ class StaticChecker(BaseVisitor):
 
     def visitId(self, ast: AST.Id, given_scope: List[ScopeObject]):
         id_mode: Union[IsTypenameVisit, IsExpressionVisit, None] = next(filter(lambda x: isinstance(x, IsTypenameVisit) or isinstance(x, IsExpressionVisit), reversed(given_scope)), None)
-        for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+        for sym in filter(lambda x: isinstance(x, ScopedSymbol), reversed(given_scope)):
             if sym.name == ast.name:
                 if isinstance(sym, StructSymbol) or isinstance(sym, InterfaceSymbol):
                     if isinstance(id_mode, IsExpressionVisit):
@@ -1385,7 +1406,7 @@ class StaticChecker(BaseVisitor):
     def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[ScopeObject]):
         # Find the struct name.
         struct_sym: Optional[StructSymbol] = None
-        for sym in filter(lambda x: isinstance(x, Symbol), reversed(given_scope)):
+        for sym in filter(lambda x: isinstance(x, ScopedSymbol), reversed(given_scope)):
             if sym.name == ast.name:
                 if isinstance(sym, StructSymbol):
                     struct_sym = sym
