@@ -1,10 +1,8 @@
-'''
- *   @author Nguyen Hua Phung
- *   @version 1.0
- *   23/10/2015
- *   This file provides a simple version of code generator
- *
-'''
+"""
+ * @author nghia.ho310pf
+ * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
+"""
+
 from AST import IntType, VoidType, ArrayType, StringType
 from Utils import *
 from StaticCheck import *
