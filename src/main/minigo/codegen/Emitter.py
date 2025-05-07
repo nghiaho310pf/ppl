@@ -307,6 +307,12 @@ class Emitter():
             frame.push()
         return self.jvm.emitINVOKEVIRTUAL(lexeme, self.getJVMType(in_))
 
+    def emitSTRCONCAT(self, frame):
+        frame.pop()
+        frame.pop()
+        frame.push()
+        return self.jvm.emitINVOKEVIRTUAL("java/lang/String/concat(Ljava/lang/String;)", "Ljava/lang/String;")
+
     '''
     *   generate ineg, fneg.
     *   @param in the type of the operands.
@@ -413,6 +419,13 @@ class Emitter():
 
         frame.pop()
         return self.jvm.emitIOR()
+
+    def emitXOROP(self, frame):
+        #frame: Frame
+        #..., value1, value2 -> ..., result
+
+        frame.pop()
+        return JasminCode.INDENT + "ixor" + JasminCode.END
 
     def emitREOP(self, op, in_, frame):
         #op: String

@@ -2,6 +2,7 @@
  * @author nghia.ho310pf
  * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
 """
+from typing import Optional
 
 import AST
 from Utils import Utils
@@ -40,6 +41,8 @@ class ClassType(AST.Type):
         return v.visitClassType(self, param)
     
 class CodeGenerator(BaseVisitor,Utils):
+    emit: Optional[Emitter]
+
     def __init__(self):
         self.className = "MiniGoClass"
         self.astTree = None
@@ -209,8 +212,49 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitReturn(self, ast, param):
         return None
 
-    def visitBinaryOp(self, ast, param):
-        return None
+    def visitBinaryOp(self, ast, o):
+        if "frame" not in o:
+            l_j, l_ty = self.visit(ast.left, o)
+            r_j, r_ty = self.visit(ast.right, o)
+
+            if isinstance(l_ty, AST.StringType) or isinstance(l_ty, AST.BoolType):
+                return "", l_ty
+            if isinstance(l_ty, AST.IntType) and isinstance(r_ty, AST.FloatType):
+                return "", AST.FloatType()
+            if isinstance(l_ty, AST.FloatType) and isinstance(r_ty, AST.IntType):
+                return "", AST.FloatType()
+            return "", AST.IntType()
+
+        frame: Frame = o["frame"]
+
+        o2 = o.copy()
+        l_j, l_ty = self.visit(ast.left, o2)
+        r_j, r_ty = self.visit(ast.right, o2)
+
+        ty = l_ty
+        if isinstance(l_ty, AST.IntType) and isinstance(r_ty, AST.FloatType):
+            l_j += self.emit.emitI2F(frame)
+            ty = AST.FloatType()
+        if isinstance(l_ty, AST.FloatType) and isinstance(r_ty, AST.IntType):
+            r_j += self.emit.emitI2F(frame)
+
+        if ast.op == "+" and isinstance(l_ty, AST.StringType):
+            j = self.emit.emitSTRCONCAT(frame)
+        elif ast.op in ["+", "-"]:
+            j = self.emit.emitADDOP(ast.op, ty, frame)
+        elif ast.op in ["*", "/"]:
+            j = self.emit.emitMULOP(ast.op, ty, frame)
+        elif ast.op == "&&":
+            j = self.emit.emitANDOP(frame)
+        elif ast.op == "||":
+            j = self.emit.emitOROP(frame)
+        elif ast.op == "!":
+            j = self.emit.emitPUSHICONST(1, frame) + self.emit.emitXOROP(frame)
+        else:
+            j = self.emit.emitREOP(ast.op, ty, frame)
+
+        return l_j + r_j + j, ty
+
 
     def visitUnaryOp(self, ast, param):
         return None
@@ -248,8 +292,11 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitBooleanLiteral(self, ast, param):
         return None
 
-    def visitStringLiteral(self, ast, param):
-        return None
+    def visitStringLiteral(self, ast, o):
+        if "frame" not in o:
+            return "", AST.StringType()
+        frame = o["frame"]
+        return self.emit.emitPUSHCONST(ast.value, AST.StringType(), frame), AST.StringType()
 
     def visitArrayLiteral(self, ast, param):
         return None
