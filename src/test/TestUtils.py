@@ -190,7 +190,7 @@ class TestCodeGen():
                 subprocess.call(
                     f"{JAVA_EXE_PATH} -jar {JASMIN_JAR} *.j",
                     shell=True,
-                    stderr=subprocess.STDOUT,
+                    stdout=subprocess.DEVNULL,
                     cwd=jasmin_output_path
                 )
 
