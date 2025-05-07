@@ -161,7 +161,7 @@ class Emitter():
             return self.jvm.emitILOAD(index)
         if isinstance(inType, AST.FloatType):
             return self.jvm.emitFLOAD(index)
-        if isinstance(inType, cgen.ArrayType) or isinstance(inType, cgen.ClassType) or isinstance(inType, AST.StringType):
+        if isinstance(inType, AST.ArrayType) or isinstance(inType, cgen.ClassType) or isinstance(inType, AST.StringType):
             return self.jvm.emitALOAD(index)
         raise CodeGenError.IllegalOperandException(name)
 
