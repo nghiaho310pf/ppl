@@ -5,9 +5,9 @@
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
-      <env name="ANTLR_JAR" value="D:\Downloads\Projects\antlr-4.9.2-complete.jar" />
-      <env name="JAVA_EXE_PATH" value="D:\Downloads\JDKs\temurin-21.0.5/bin/java.exe" />
       <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="ANTLR_JAR" value="D:\Downloads\Projects\antlr-4.9.2-complete.jar" />
+      <env name="JAVA_EXE_PATH" value="D:\Downloads\JDKs\temurin-23.0.2/bin/java.exe" />
     </envs>
     <option name="SDK_HOME" value="" />
     <option name="WORKING_DIRECTORY" value="D:\Downloads\Projects\ppl\src" />
