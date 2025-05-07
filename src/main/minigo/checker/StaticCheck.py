@@ -224,17 +224,10 @@ class NilType:
 
 class StaticChecker(BaseVisitor):
     global_declarations: List[ScopeObject]
-
-    # Methods get special treatment; they modify other things.
-    # They are not const-friendly so they don't really need more processing.
-    method_declarations: List[AST.MethodDecl]
-
     root_ast: AST.Program
 
     def __init__(self, root_ast: AST.Program):
         self.global_declarations = self.create_prelude()
-        self.method_declarations = []
-
         self.root_ast = root_ast
 
     @staticmethod
