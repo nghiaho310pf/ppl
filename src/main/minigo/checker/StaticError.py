@@ -45,7 +45,6 @@ class Undeclared(StaticError):
     
     def __str__(self):
         return  "Undeclared "+ str(self.k) + ": " + self.n
-
 @dataclass
 class Redeclared(StaticError):
     k: Kind

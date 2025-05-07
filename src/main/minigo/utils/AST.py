@@ -1,7 +1,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod, ABCMeta
-from dataclasses import dataclass
-from typing import List, Tuple, Union
+from dataclasses import dataclass,field
+from typing import List, Union
 from Visitor import Visitor
 
 
@@ -67,8 +67,8 @@ class ParamDecl(Decl):
 @dataclass    
 class VarDecl(Decl,BlockMember):
     varName : str
-    varType : Type | None # None if there is no type
-    varInit : Expr | None # None if there is no initialization
+    varType : Type # None if there is no type
+    varInit : Expr # None if there is no initialization
 
     def __str__(self):
         return "VarDecl(" + self.varName +  (("," + str(self.varType)) if self.varType else "") + ("" if self.varInit is None else (","+ str(self.varInit))) + ")"
@@ -173,18 +173,6 @@ class ArrayType(Type):
         return v.visitArrayType(self, param)
 
 @dataclass
-class StructType(Type):
-    name: str
-    elements:List[Tuple[str,Type]]
-    methods:List[MethodDecl]
-        
-    def __str__(self):
-        return "StructType("+ self.name + ",[" + ','.join(("(" + i + "," + str(j) + ")") for i,j in self.elements) + "],["+ ','.join(str(i) for i in self.methods) +"])"
-
-    def accept(self, v, param):
-        return v.visitStructType(self, param)
-
-@dataclass
 class InterfaceType(Type):
     name: str
     methods:List[Prototype]
@@ -194,6 +182,20 @@ class InterfaceType(Type):
 
     def accept(self, v, param):
         return v.visitInterfaceType(self, param)
+
+
+@dataclass
+class StructType(Type):
+    name: str
+    elements:List[Tuple[str,Type]]
+    methods:List[MethodDecl]
+    implements:List[InterfaceType] =  field(default_factory=list)
+        
+    def __str__(self):
+        return "StructType("+ self.name + ",[" + ','.join(("(" + i + "," + str(j) + ")") for i,j in self.elements) + "],["+ ','.join(str(i) for i in self.methods)+ "],["+",".join(str(i) for i in self.implements) +"])"
+
+    def accept(self, v, param):
+        return v.visitStructType(self, param)
 
 @dataclass
 class Block(Stmt):
@@ -220,7 +222,7 @@ class Assign(Stmt):
 class If(Stmt):
     expr:Expr
     thenStmt:Stmt
-    elseStmt:Stmt | None # None if there is no else
+    elseStmt:Stmt # None if there is no else
 
     def __str__(self):
         return "If(" + str(self.expr) + "," + str(self.thenStmt) + ("" if (self.elseStmt is None) else "," + str(self.elseStmt)) + ")"
@@ -281,7 +283,7 @@ class Continue(Stmt):
 
 @dataclass
 class Return(Stmt):
-    expr:Expr | None # None if there is no expr
+    expr:Expr # None if there is no expr
 
     def __str__(self):
         return "Return(" + ("" if (self.expr is None) else str(self.expr)) + ")"
