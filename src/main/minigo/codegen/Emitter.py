@@ -79,7 +79,11 @@ class Emitter():
         if rst == "0.0" or rst == "1.0" or rst == "2.0":
             return self.jvm.emitFCONST(rst)
         else:
-            return self.jvm.emitLDC(in_)
+            return self.jvm.emitLDC(f"{in_}")
+
+    def emitPUSHNULL(self, frame):
+        frame.push()
+        return self.jvm.emitPUSHNULL()
 
     ''' 
     *    generate code to push a constant onto the operand stack.
