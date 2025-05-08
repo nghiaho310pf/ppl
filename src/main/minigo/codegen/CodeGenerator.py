@@ -45,23 +45,20 @@ class BadCoverage(Exception):
     def __str__(self):
         return f"Static checker couldn't cover the AST simplifier"
 
-# Just use classes, man.
-# For scope state.
-
-class SimplifierScopeObject:
+class CtxObject:
     def __init__(self):
         pass
 
 # For name resolution.
 
-class SimplifierSymbol(SimplifierScopeObject):
+class Sym(CtxObject):
     name: str
 
     def __init__(self, name: str):
         super().__init__()
         self.name = name
 
-class SimplifierStructSymbol(SimplifierSymbol):
+class StructSym(Sym):
     original_ast: AST.StructType
 
     being_checked: bool
@@ -74,7 +71,7 @@ class SimplifierStructSymbol(SimplifierSymbol):
         self.being_checked = False
         self.done_resolving = False
 
-class SimplifierInterfaceSymbol(SimplifierSymbol):
+class InterfaceSym(Sym):
     original_ast: AST.InterfaceType
 
     being_checked: bool
@@ -87,7 +84,7 @@ class SimplifierInterfaceSymbol(SimplifierSymbol):
         self.being_checked = False
         self.done_resolving = False
 
-class SimplifierFunctionSymbol(SimplifierSymbol):
+class FunctionSym(Sym):
     original_ast: Union[AST.FuncDecl, Tuple[List[AST.Type], AST.Type]]
     done_resolving: bool
 
@@ -96,14 +93,14 @@ class SimplifierFunctionSymbol(SimplifierSymbol):
         self.original_ast = original_ast
         self.done_resolving = False
 
-class SimplifierVariableSymbol(SimplifierSymbol):
+class VarSym(Sym):
     original_ast: Union[AST.VarDecl, AST.Id]
 
     def __init__(self, name: str, original_ast: Union[AST.VarDecl, AST.Id]):
         super().__init__(name)
         self.original_ast = original_ast # VarDecl for usual vars, Id for loops
 
-class SimplifierConstantSymbol(SimplifierSymbol):
+class ConstSym(Sym):
     original_ast: AST.ConstDecl
     global_symbol_index: Optional[int]
 
@@ -118,7 +115,7 @@ class SimplifierConstantSymbol(SimplifierSymbol):
         self.being_checked = False
         self.done_resolving = False
 
-class SimplifierFunctionParameterSymbol(SimplifierSymbol):
+class FnParamSym(Sym):
     parameter_type: AST.Type
 
     def __init__(self, name: str, parameter_type: AST.Type):
@@ -127,7 +124,7 @@ class SimplifierFunctionParameterSymbol(SimplifierSymbol):
 
 # For banning illegal returns.
 
-class SimplifierCurrentFunction(SimplifierScopeObject):
+class CurrentFn(CtxObject):
     original_ast: AST.FuncDecl
 
     def __init__(self, original_ast: AST.FuncDecl):
@@ -136,9 +133,9 @@ class SimplifierCurrentFunction(SimplifierScopeObject):
 
 # Cheap hacks for resolving types for methods.
 
-class SimplifierMethodSymbol(SimplifierScopeObject):
+class CurrentMethod(CtxObject):
     original_ast: AST.MethodDecl
-    struct_symbol: Optional[SimplifierStructSymbol]
+    struct_symbol: Optional[StructSym]
 
     def __init__(self, original_ast: AST.MethodDecl):
         super().__init__()
@@ -147,7 +144,7 @@ class SimplifierMethodSymbol(SimplifierScopeObject):
 
 # Identifier resolution mode
 
-class SimplifierIdResolutionMode(SimplifierScopeObject):
+class SimplifierIdResolutionMode(CtxObject):
     def __init__(self):
         super().__init__()
 
@@ -161,26 +158,15 @@ class SimplifierIsTypenameVisit(SimplifierIdResolutionMode):
 
 # For banning writes to consts.
 
-class SimplifierIsLeftHandSideVisit(SimplifierScopeObject):
+class SimplifierIsLeftHandSideVisit(CtxObject):
     def __init__(self):
         super().__init__()
 
 # For banning function/method calls and references to non-consts.
 
-class SimplifierIsComptimeExpressionVisit(SimplifierScopeObject):
+class SimplifierIsComptimeExpressionVisit(CtxObject):
     def __init__(self):
         super().__init__()
-
-# For banning breaks and continues outside of loops.
-
-class SimplifierIsLoopVisit(SimplifierScopeObject):
-    block: AST.Block
-    banned_names: List[str]
-
-    def __init__(self, block: AST.Block, banned_names: List[str]):
-        super().__init__()
-        self.block = block
-        self.banned_names = banned_names
 
 # Special nil type.
 
@@ -225,7 +211,7 @@ class ConcreteStructLiteral(AST.Literal):
         return v.visitConcreteStructLiteral(self, param)
 
 class Simplifier(BaseVisitor):
-    global_declarations: List[SimplifierScopeObject]
+    global_declarations: List[CtxObject]
     root_ast: AST.Program
 
     def __init__(self, root_ast: AST.Program):
@@ -266,7 +252,7 @@ class Simplifier(BaseVisitor):
 
         return a_expr
 
-    def simplify_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: List[AST.IntLiteral], given_scope: List[SimplifierScopeObject]):
+    def simplify_nested_list(self, original_ast: AST.ArrayLiteral, ast: AST.NestedList, ele_type: AST.Type, dimens: List[AST.IntLiteral], given_scope: List[CtxObject]):
         if len(dimens) > 1:
             return [self.simplify_nested_list(original_ast, sublist, ele_type, dimens[1:], given_scope) for sublist in ast]
         else:
@@ -279,43 +265,43 @@ class Simplifier(BaseVisitor):
 
     @staticmethod
     def create_prelude():
-        get_int = SimplifierFunctionSymbol("getInt", ([], AST.IntType()))
+        get_int = FunctionSym("getInt", ([], AST.IntType()))
         get_int.done_resolving = True
 
-        put_int = SimplifierFunctionSymbol("putInt", ([AST.IntType()], AST.VoidType()))
+        put_int = FunctionSym("putInt", ([AST.IntType()], AST.VoidType()))
         put_int.done_resolving = True
 
-        put_int_ln = SimplifierFunctionSymbol("putIntLn", ([AST.IntType()], AST.VoidType()))
+        put_int_ln = FunctionSym("putIntLn", ([AST.IntType()], AST.VoidType()))
         put_int_ln.done_resolving = True
 
-        get_float = SimplifierFunctionSymbol("getFloat", ([], AST.FloatType()))
+        get_float = FunctionSym("getFloat", ([], AST.FloatType()))
         get_float.done_resolving = True
 
-        put_float = SimplifierFunctionSymbol("putFloat", ([AST.FloatType()], AST.VoidType()))
+        put_float = FunctionSym("putFloat", ([AST.FloatType()], AST.VoidType()))
         put_float.done_resolving = True
 
-        put_float_ln = SimplifierFunctionSymbol("putFloatLn", ([AST.FloatType()], AST.VoidType()))
+        put_float_ln = FunctionSym("putFloatLn", ([AST.FloatType()], AST.VoidType()))
         put_float_ln.done_resolving = True
 
-        get_bool = SimplifierFunctionSymbol("getBool", ([], AST.BoolType()))
+        get_bool = FunctionSym("getBool", ([], AST.BoolType()))
         get_bool.done_resolving = True
 
-        put_bool = SimplifierFunctionSymbol("putBool", ([AST.BoolType()], AST.VoidType()))
+        put_bool = FunctionSym("putBool", ([AST.BoolType()], AST.VoidType()))
         put_bool.done_resolving = True
 
-        put_bool_ln = SimplifierFunctionSymbol("putBoolLn", ([AST.BoolType()], AST.VoidType()))
+        put_bool_ln = FunctionSym("putBoolLn", ([AST.BoolType()], AST.VoidType()))
         put_bool_ln.done_resolving = True
 
-        get_string = SimplifierFunctionSymbol("getString", ([], AST.StringType()))
+        get_string = FunctionSym("getString", ([], AST.StringType()))
         get_string.done_resolving = True
 
-        put_string = SimplifierFunctionSymbol("putString", ([AST.StringType()], AST.VoidType()))
+        put_string = FunctionSym("putString", ([AST.StringType()], AST.VoidType()))
         put_string.done_resolving = True
 
-        put_string_ln = SimplifierFunctionSymbol("putStringLn", ([AST.StringType()], AST.VoidType()))
+        put_string_ln = FunctionSym("putStringLn", ([AST.StringType()], AST.VoidType()))
         put_string_ln.done_resolving = True
 
-        put_ln = SimplifierFunctionSymbol("putLn", ([], AST.VoidType()))
+        put_ln = FunctionSym("putLn", ([], AST.VoidType()))
         put_ln.done_resolving = True
 
         return [
@@ -339,7 +325,7 @@ class Simplifier(BaseVisitor):
     #   - pass an int as a global scope object index limit.
     # For checking local objects:
     #   - pass a List[ScopeObject] for local scoping.
-    def make_default_value(self, typename: AST.Type, scoping: Union[int, List[SimplifierScopeObject]], make_nested_list: bool = False):
+    def make_default_value(self, typename: AST.Type, scoping: Union[int, List[CtxObject]], make_nested_list: bool = False):
         if isinstance(typename, AST.IntType):
             return AST.IntLiteral(0)
         elif isinstance(typename, AST.FloatType):
@@ -360,12 +346,12 @@ class Simplifier(BaseVisitor):
             return AST.ArrayLiteral(typename.dimens, typename.eleType, vals)
         elif isinstance(typename, AST.Id):
             for i, sym in enumerate(self.global_declarations):
-                if isinstance(sym, SimplifierSymbol) and (sym.name == typename.name):
-                    if isinstance(sym, SimplifierStructSymbol):
+                if isinstance(sym, Sym) and (sym.name == typename.name):
+                    if isinstance(sym, StructSym):
                         return AST.StructLiteral(typename.name, [])
-                    elif isinstance(sym, SimplifierInterfaceSymbol):
+                    elif isinstance(sym, InterfaceSym):
                         return AST.NilLiteral()
-                    elif (isinstance(sym, SimplifierConstantSymbol) or isinstance(sym, SimplifierVariableSymbol)) and (isinstance(scoping, List) or (i < scoping)):
+                    elif (isinstance(sym, ConstSym) or isinstance(sym, VarSym)) and (isinstance(scoping, List) or (i < scoping)):
                         raise BadCoverage()
             raise BadCoverage()
         return AST.NilLiteral()
@@ -376,12 +362,12 @@ class Simplifier(BaseVisitor):
     #   - pass an int as a global scope object index limit.
     # For local consts:
     #   - pass a List[ScopeObject] for local scoping.
-    def comptime_evaluate(self, ast: AST.Expr, scoping: Union[int, List[SimplifierScopeObject]]):
+    def comptime_evaluate(self, ast: AST.Expr, scoping: Union[int, List[CtxObject]]):
         if isinstance(ast, AST.Id):
-            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, SimplifierSymbol), reversed(scoping))
+            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, Sym), reversed(scoping))
             for i, sym in enumerate(symbols):
-                if isinstance(sym, SimplifierSymbol) and (sym.name == ast.name):
-                    if isinstance(sym, SimplifierConstantSymbol):
+                if isinstance(sym, Sym) and (sym.name == ast.name):
+                    if isinstance(sym, ConstSym):
                         if isinstance(scoping, List) or i < scoping:
                             if isinstance(scoping, int):
                                 # In midst of global comptime resolution! Need to resolve this const before using it.
@@ -553,10 +539,10 @@ class Simplifier(BaseVisitor):
             else:
                 raise BadCoverage()
         elif isinstance(ast, AST.StructLiteral):
-            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, SimplifierSymbol), reversed(scoping))
+            symbols = self.global_declarations if isinstance(scoping, int) else filter(lambda x: isinstance(x, Sym), reversed(scoping))
             for i, sym in enumerate(symbols):
-                if isinstance(sym, SimplifierSymbol) and (sym.name == ast.name):
-                    if not isinstance(sym, SimplifierStructSymbol):
+                if isinstance(sym, Sym) and (sym.name == ast.name):
+                    if not isinstance(sym, StructSym):
                         raise BadCoverage()
                     self.global_resolve_struct_definition(sym, max(scoping, i) if isinstance(scoping, int) else scoping)
                     elements_ast: List[Tuple[str, AST.Expr]] = ast.elements
@@ -587,7 +573,7 @@ class Simplifier(BaseVisitor):
         raise BadCoverage()
 
     # Global things get their own set of functions because of complicated identifier dependencies.
-    def global_resolve_struct_definition(self, sym: SimplifierStructSymbol, index_limit: int):
+    def global_resolve_struct_definition(self, sym: StructSym, index_limit: int):
         if sym.done_resolving:
             return sym.original_ast
 
@@ -601,7 +587,7 @@ class Simplifier(BaseVisitor):
         sym.done_resolving = True
         return sym.original_ast
 
-    def global_resolve_interface_definition(self, sym: SimplifierInterfaceSymbol, index_limit: int):
+    def global_resolve_interface_definition(self, sym: InterfaceSym, index_limit: int):
         if sym.done_resolving:
             return sym.original_ast
 
@@ -617,7 +603,7 @@ class Simplifier(BaseVisitor):
         sym.done_resolving = True
         return sym.original_ast
 
-    def global_resolve_function_definition(self, sym: SimplifierFunctionSymbol, index_limit: int):
+    def global_resolve_function_definition(self, sym: FunctionSym, index_limit: int):
         if sym.done_resolving:
             return
 
@@ -633,7 +619,7 @@ class Simplifier(BaseVisitor):
         ast.fun.retType = self.global_resolve_typename(ast.fun.retType, index_limit)
         ast.fun.params = [AST.ParamDecl(it.parName, self.global_resolve_typename(it.parType, index_limit)) for it in ast.fun.params]
 
-    def global_resolve_constant(self, sym: SimplifierConstantSymbol, index_limit: int):
+    def global_resolve_constant(self, sym: ConstSym, index_limit: int):
         if sym.done_resolving:
             return
 
@@ -648,16 +634,16 @@ class Simplifier(BaseVisitor):
     def global_resolve_typename(self, typename: AST.Type, index_limit: int):
         if isinstance(typename, AST.Id):
             for i, sym in enumerate(self.global_declarations):
-                if isinstance(sym, SimplifierSymbol) and (sym.name == typename.name):
-                    if isinstance(sym, SimplifierStructSymbol):
+                if isinstance(sym, Sym) and (sym.name == typename.name):
+                    if isinstance(sym, StructSym):
                         if sym.being_checked:
                             return sym.original_ast
                         return self.global_resolve_struct_definition(sym, index_limit)
-                    elif isinstance(sym, SimplifierInterfaceSymbol):
+                    elif isinstance(sym, InterfaceSym):
                         if sym.being_checked:
                             return sym.original_ast
                         return self.global_resolve_interface_definition(sym, index_limit)
-                    elif (i < index_limit) and (isinstance(sym, SimplifierConstantSymbol) or isinstance(sym, SimplifierVariableSymbol)):
+                    elif (i < index_limit) and (isinstance(sym, ConstSym) or isinstance(sym, VarSym)):
                         raise BadCoverage()
             raise BadCoverage()
         elif isinstance(typename, AST.ArrayType):
@@ -671,72 +657,72 @@ class Simplifier(BaseVisitor):
     def simplify(self):
         return self.visit(self.root_ast, [])
 
-    def visitProgram(self, ast: AST.Program, given_scope: List[SimplifierScopeObject]):
+    def visitProgram(self, ast: AST.Program, given_scope: List[CtxObject]):
         for thing in ast.decl:
             if isinstance(thing, AST.StructType):
-                self.global_declarations.append(SimplifierStructSymbol(thing.name, thing))
+                self.global_declarations.append(StructSym(thing.name, thing))
             elif isinstance(thing, AST.InterfaceType):
-                self.global_declarations.append(SimplifierInterfaceSymbol(thing.name, thing))
+                self.global_declarations.append(InterfaceSym(thing.name, thing))
             elif isinstance(thing, AST.FuncDecl):
-                self.global_declarations.append(SimplifierFunctionSymbol(thing.name, thing))
+                self.global_declarations.append(FunctionSym(thing.name, thing))
             elif isinstance(thing, AST.MethodDecl):
-                self.global_declarations.append(SimplifierMethodSymbol(thing))
+                self.global_declarations.append(CurrentMethod(thing))
             elif isinstance(thing, AST.ConstDecl):
-                self.global_declarations.append(SimplifierConstantSymbol(thing.conName, thing))
+                self.global_declarations.append(ConstSym(thing.conName, thing))
             elif isinstance(thing, AST.VarDecl):
-                self.global_declarations.append(SimplifierVariableSymbol(thing.varName, thing))
+                self.global_declarations.append(VarSym(thing.varName, thing))
 
         for i, sym in enumerate(self.global_declarations):
-            if isinstance(sym, SimplifierStructSymbol):
+            if isinstance(sym, StructSym):
                 self.global_resolve_struct_definition(sym, i)
-            elif isinstance(sym, SimplifierInterfaceSymbol):
+            elif isinstance(sym, InterfaceSym):
                 self.global_resolve_interface_definition(sym, i)
-            elif isinstance(sym, SimplifierFunctionSymbol):
+            elif isinstance(sym, FunctionSym):
                 # Cheap hack to filter out the prelude.
                 if isinstance(sym.original_ast, AST.FuncDecl):
                     self.global_resolve_function_definition(sym, i)
-            elif isinstance(sym, SimplifierMethodSymbol):
+            elif isinstance(sym, CurrentMethod):
                 recv_ty: AST.Id = sym.original_ast.recType # NOTE: forced typing
                 recv_name = recv_ty.name
-                struct: Optional[SimplifierStructSymbol] = next(filter(lambda x: isinstance(x, SimplifierStructSymbol) and (x.name == recv_name), self.global_declarations))
+                struct: Optional[StructSym] = next(filter(lambda x: isinstance(x, StructSym) and (x.name == recv_name), self.global_declarations))
                 if struct is None:
                     raise BadCoverage()
                 struct.original_ast.methods.append(sym.original_ast)
                 sym.struct_symbol = struct
                 self.global_resolve_method_definition(sym.original_ast, i)
-            elif isinstance(sym, SimplifierConstantSymbol):
+            elif isinstance(sym, ConstSym):
                 self.global_resolve_constant(sym, i)
 
         my_scope = given_scope.copy()
 
         for sym in self.global_declarations:
-            if isinstance(sym, SimplifierStructSymbol):
+            if isinstance(sym, StructSym):
                 my_scope.append(sym)
-            elif isinstance(sym, SimplifierInterfaceSymbol):
+            elif isinstance(sym, InterfaceSym):
                 my_scope.append(sym)
-            elif isinstance(sym, SimplifierFunctionSymbol):
+            elif isinstance(sym, FunctionSym):
                 my_scope.append(sym)
 
         for sym in self.global_declarations:
-            if isinstance(sym, SimplifierStructSymbol):
+            if isinstance(sym, StructSym):
                 self.visit(sym.original_ast, my_scope)
-            elif isinstance(sym, SimplifierInterfaceSymbol):
+            elif isinstance(sym, InterfaceSym):
                 self.visit(sym.original_ast, my_scope)
             # Cheap hack to filter out the prelude.
-            elif isinstance(sym, SimplifierFunctionSymbol) and isinstance(sym.original_ast, AST.FuncDecl):
+            elif isinstance(sym, FunctionSym) and isinstance(sym.original_ast, AST.FuncDecl):
                 self.visit(sym.original_ast, my_scope)
-            elif isinstance(sym, SimplifierMethodSymbol):
+            elif isinstance(sym, CurrentMethod):
                 self.visit(sym.original_ast, my_scope + [sym])
-            elif isinstance(sym, SimplifierConstantSymbol):
+            elif isinstance(sym, ConstSym):
                 self.visit(sym.original_ast, my_scope)
                 my_scope.append(sym)
-            elif isinstance(sym, SimplifierVariableSymbol):
+            elif isinstance(sym, VarSym):
                 sym.resolved_type = self.visit(sym.original_ast, my_scope)
                 my_scope.append(sym)
 
         return AST.Program(list(filter(lambda x: not isinstance(x, AST.MethodDecl), ast.decl)))
 
-    def visitVarDecl(self, ast: AST.VarDecl, given_scope: List[SimplifierScopeObject]):
+    def visitVarDecl(self, ast: AST.VarDecl, given_scope: List[CtxObject]):
         # We don't check name dupes; that's done by the outer layer.
         # Instead, we only visit the inner expression and check for type mismatches.
 
@@ -754,9 +740,7 @@ class Simplifier(BaseVisitor):
 
         return ast
 
-    def visitConstDecl(self, ast: AST.ConstDecl, given_scope: List[SimplifierScopeObject]):
-        # We don't check name dupes here either; that's done by the outer layer.
-
+    def visitConstDecl(self, ast: AST.ConstDecl, given_scope: List[CtxObject]):
         resolved_expr, resolved_type = self.visit(ast.iniExpr, given_scope + [SimplifierIsExpressionVisit()])
         if ast.conType is None:
             ast.conType = resolved_type
@@ -766,31 +750,31 @@ class Simplifier(BaseVisitor):
 
         return ast
 
-    def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[SimplifierScopeObject]):
-        self_sym: Optional[SimplifierFunctionSymbol] = next(filter(lambda x: isinstance(x, SimplifierFunctionSymbol) and (x.original_ast == ast), reversed(given_scope)), None)
+    def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[CtxObject]):
+        self_sym: Optional[FunctionSym] = next(filter(lambda x: isinstance(x, FunctionSym) and (x.original_ast == ast), reversed(given_scope)), None)
         # Sanity check.
         if self_sym is None:
             raise BadCoverage()
 
         my_scope = given_scope.copy()
         for i, param in enumerate(ast.params):
-            my_scope.append(SimplifierFunctionParameterSymbol(param.parName, ast.params[i].parType))
+            my_scope.append(FnParamSym(param.parName, ast.params[i].parType))
 
-        current_function_scope_object = SimplifierCurrentFunction(ast)
+        current_function_scope_object = CurrentFn(ast)
         ast.body = self.visit(ast.body, my_scope + [current_function_scope_object])
 
-    def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[SimplifierScopeObject]):
-        self_sym: Optional[SimplifierMethodSymbol] = next(filter(lambda x: isinstance(x, SimplifierMethodSymbol) and (x.original_ast == ast), reversed(given_scope)), None)
+    def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[CtxObject]):
+        self_sym: Optional[CurrentMethod] = next(filter(lambda x: isinstance(x, CurrentMethod) and (x.original_ast == ast), reversed(given_scope)), None)
         # Sanity check.
         if self_sym is None:
             raise BadCoverage()
 
         my_scope = given_scope.copy()
-        my_scope.append(SimplifierFunctionParameterSymbol(ast.receiver, ast.recType))
+        my_scope.append(FnParamSym(ast.receiver, ast.recType))
         for i, param in enumerate(ast.fun.params):
-            my_scope.append(SimplifierFunctionParameterSymbol(param.parName, param.parType))
+            my_scope.append(FnParamSym(param.parName, param.parType))
 
-        current_function_scope_object = SimplifierCurrentFunction(ast.fun)
+        current_function_scope_object = CurrentFn(ast.fun)
         ast.fun.body = self.visit(ast.fun.body, my_scope + [current_function_scope_object])
 
     def visitPrototype(self, ast, param):
@@ -811,32 +795,29 @@ class Simplifier(BaseVisitor):
     def visitVoidType(self, ast, param):
         return ast # Intentional.
 
-    def visitArrayType(self, ast: AST.ArrayType, given_scope: List[SimplifierScopeObject]):
+    def visitArrayType(self, ast: AST.ArrayType, given_scope: List[CtxObject]):
         return AST.ArrayType([self.comptime_evaluate(it, given_scope) for it in ast.dimens], self.visit(ast.eleType, given_scope))
 
-    def visitStructType(self, ast: AST.StructType, given_scope: List[SimplifierScopeObject]):
+    def visitStructType(self, ast: AST.StructType, given_scope: List[CtxObject]):
         return ast # Intentional.
 
-    def visitInterfaceType(self, ast: AST.InterfaceType, given_scope: List[SimplifierScopeObject]):
+    def visitInterfaceType(self, ast: AST.InterfaceType, given_scope: List[CtxObject]):
         return ast # Intentional.
 
-    def visitBlock(self, ast: AST.Block, given_scope: List[SimplifierScopeObject]):
+    def visitBlock(self, ast: AST.Block, given_scope: List[CtxObject]):
         resulting_block = []
-
-        # Find extra banned names if we're the block of a for loop
-        loop_object: Optional[SimplifierIsLoopVisit] = next(filter(lambda x: isinstance(x, SimplifierIsLoopVisit), reversed(given_scope)), None)
 
         my_scope = given_scope.copy()
 
         # Vars and consts within the same block cannot collide names. Inner blocks can shadow.
         for statement in ast.member:
             if isinstance(statement, AST.VarDecl):
-                sym = SimplifierVariableSymbol(statement.varName, statement)
+                sym = VarSym(statement.varName, statement)
                 sym.resolved_type = self.visit(statement, my_scope)
                 my_scope.append(sym)
                 resulting_block.append(statement)
             elif isinstance(statement, AST.ConstDecl):
-                sym = SimplifierConstantSymbol(statement.conName, statement)
+                sym = ConstSym(statement.conName, statement)
                 sym.resolved_type = self.visit(statement, my_scope)
                 sym.resolved_value = self.comptime_evaluate(statement.iniExpr, my_scope) if (statement.iniExpr is not None) else None
                 my_scope.append(sym)
@@ -847,11 +828,11 @@ class Simplifier(BaseVisitor):
             elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
-                existing_maybe_variable = next(filter(lambda x: isinstance(x, SimplifierSymbol) and (x.name == lhs.name), reversed(my_scope)), None)
-                if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, SimplifierVariableSymbol) or isinstance(existing_maybe_variable, SimplifierConstantSymbol) or isinstance(existing_maybe_variable, SimplifierFunctionParameterSymbol)):
+                existing_maybe_variable = next(filter(lambda x: isinstance(x, Sym) and (x.name == lhs.name), reversed(my_scope)), None)
+                if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VarSym) or isinstance(existing_maybe_variable, ConstSym) or isinstance(existing_maybe_variable, FnParamSym)):
                     simplified_expr, implicit_type = self.visit(statement.rhs, my_scope + [SimplifierIsExpressionVisit()])
                     fake_ast = AST.VarDecl(lhs.name, implicit_type, simplified_expr)
-                    sym = SimplifierVariableSymbol(lhs.name, fake_ast)
+                    sym = VarSym(lhs.name, fake_ast)
                     my_scope.append(sym)
                     resulting_block.append(fake_ast)
                 else:
@@ -861,12 +842,12 @@ class Simplifier(BaseVisitor):
                 resulting_block.append(self.visit(statement, my_scope))
         return AST.Block(resulting_block)
 
-    def visitAssign(self, ast: AST.Assign, given_scope: List[SimplifierScopeObject]):
+    def visitAssign(self, ast: AST.Assign, given_scope: List[CtxObject]):
         lhs_expr, lhs_type = self.visit(ast.lhs, given_scope + [SimplifierIsExpressionVisit(), SimplifierIsLeftHandSideVisit()])
         rhs_expr, rhs_type = self.visit(ast.rhs, given_scope + [SimplifierIsExpressionVisit()])
         return AST.Assign(lhs_expr, self.maybe_wrap_cast_a_to_b(rhs_type, lhs_type, rhs_expr))
 
-    def visitIf(self, ast: AST.If, given_scope: List[SimplifierScopeObject]):
+    def visitIf(self, ast: AST.If, given_scope: List[CtxObject]):
         simplified_condition, condition_type = self.visit(ast.expr, given_scope + [SimplifierIsExpressionVisit()])
         ast.expr = simplified_condition
         ast.thenStmt = self.visit(ast.thenStmt, given_scope)
@@ -874,112 +855,76 @@ class Simplifier(BaseVisitor):
             ast.elseStmt = self.visit(ast.elseStmt, given_scope)
         return ast
 
-    def visitForBasic(self, ast: AST.ForBasic, given_scope: List[SimplifierScopeObject]):
-        condition_type = self.visit(ast.cond, given_scope + [SimplifierIsExpressionVisit()])
-        if not isinstance(condition_type, AST.BoolType):
-            raise BadCoverage()
-        self.visit(ast.loop, given_scope + [SimplifierIsLoopVisit(ast.loop, [])])
+    def visitForBasic(self, ast: AST.ForBasic, given_scope: List[CtxObject]):
+        condition_expr, condition_type = self.visit(ast.cond, given_scope + [SimplifierIsExpressionVisit()])
+        ast.cond = condition_expr
+        ast.loop = self.visit(ast.loop, given_scope)
+        return ast
 
-    def visitForStep(self, ast: AST.ForStep, given_scope: List[SimplifierScopeObject]):
+    def visitForStep(self, ast: AST.ForStep, given_scope: List[CtxObject]):
         my_scope = given_scope.copy()
 
-        banned_names: List[str] = []
-
         if isinstance(ast.init, AST.VarDecl):
-            sym = SimplifierVariableSymbol(ast.init.varName, ast.init)
-            sym.resolved_type = self.visit(ast.init, my_scope)
+            sym = VarSym(ast.init.varName, ast.init)
+            ast.init = self.visit(ast.init, my_scope)
             my_scope.append(sym)
-            banned_names.append(ast.init.varName)
         elif isinstance(ast.init, AST.Assign) and isinstance(ast.init.lhs, AST.Id):
             lhs: AST.Id = ast.init.lhs
             # Is the name not declared? If so, turn it into a variable declaration.
-            existing_maybe_variable = next(filter(lambda x: isinstance(x, SimplifierSymbol) and (x.name == lhs.name), reversed(my_scope)), None)
-            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, SimplifierVariableSymbol) or isinstance(existing_maybe_variable, SimplifierConstantSymbol) or isinstance(existing_maybe_variable, SimplifierFunctionParameterSymbol)):
-                sym = SimplifierVariableSymbol(lhs.name, ast.init)
-
-                implicit_type = self.visit(ast.init.rhs, my_scope + [SimplifierIsExpressionVisit()])
-                # No voids allowed.
-                if isinstance(implicit_type, AST.VoidType):
-                    raise BadCoverage()
-
-                sym.resolved_type = implicit_type
-                my_scope.append(sym)
-
-                banned_names.append(lhs.name)
+            existing_maybe_variable = next(filter(lambda x: isinstance(x, Sym) and (x.name == lhs.name), reversed(my_scope)), None)
+            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, VarSym) or isinstance(existing_maybe_variable, ConstSym) or isinstance(existing_maybe_variable, FnParamSym)):
+                simplified_expr, implicit_type = self.visit(ast.init.rhs, my_scope + [SimplifierIsExpressionVisit()])
+                fake_ast = AST.VarDecl(lhs.name, implicit_type, simplified_expr)
+                ast.init = fake_ast
+                my_scope.append(VarSym(lhs.name, fake_ast))
             else:
-                self.visit(ast.init, my_scope)
+                ast.init = self.visit(ast.init, my_scope)
+        elif isinstance(ast.init, AST.Expr):
+            init_expr, init_type = self.visit(ast.init, my_scope)
+            ast.init = init_expr
         else:
-            # This is probably a statement.
             self.visit(ast.init, my_scope)
 
-        condition_type = self.visit(ast.cond, my_scope + [SimplifierIsExpressionVisit()])
-        if not isinstance(condition_type, AST.BoolType):
-            raise BadCoverage()
+        condition_expr, condition_type = self.visit(ast.cond, my_scope + [SimplifierIsExpressionVisit()])
+        ast.cond = condition_expr
 
-        if isinstance(ast.upda.lhs, AST.Id):
-            lhs: AST.Id = ast.upda.lhs
-            # Is the name not declared? If so, turn it into a variable declaration.
-            existing_maybe_variable = next(filter(lambda x: isinstance(x, SimplifierSymbol) and (x.name == lhs.name), reversed(my_scope)), None)
-            if existing_maybe_variable is None or not (isinstance(existing_maybe_variable, SimplifierVariableSymbol) or isinstance(existing_maybe_variable, SimplifierConstantSymbol) or isinstance(existing_maybe_variable, SimplifierFunctionParameterSymbol)):
-                sym = SimplifierVariableSymbol(lhs.name, ast.upda)
+        # This is probably a statement.
+        upda_expr, upda_type = self.visit(ast.upda, my_scope)
+        ast.upda = upda_expr
 
-                implicit_type = self.visit(ast.upda.rhs, my_scope + [SimplifierIsExpressionVisit()])
-                # No voids allowed.
-                if isinstance(implicit_type, AST.VoidType):
-                    raise BadCoverage()
+        ast.loop = self.visit(ast.loop, my_scope)
+        return ast
 
-                sym.resolved_type = implicit_type
-                my_scope.append(sym)
-
-                banned_names.append(lhs.name)
-            else:
-                self.visit(ast.upda, my_scope)
-        else:
-            # This is probably a statement.
-            self.visit(ast.upda, my_scope)
-
-        my_scope += [SimplifierIsLoopVisit(ast.loop, banned_names)]
-        self.visit(ast.loop, my_scope)
-
-    def visitForEach(self, ast: AST.ForEach, given_scope: List[SimplifierScopeObject]):
+    def visitForEach(self, ast: AST.ForEach, given_scope: List[CtxObject]):
         my_scope = given_scope.copy()
 
-        # https://lms.hcmut.edu.vn/mod/forum/discuss.php?d=26554
-        idx_sym = next(filter(lambda x: isinstance(x, SimplifierSymbol) and (x.name == ast.idx.name), reversed(my_scope)), None)
-        if idx_sym is None or not (isinstance(idx_sym, SimplifierVariableSymbol) or isinstance(idx_sym, SimplifierFunctionParameterSymbol)):
-            raise BadCoverage()
-        if not isinstance(idx_sym.resolved_type, AST.IntType):
+        idx_sym = next(filter(lambda x: isinstance(x, Sym) and (x.name == ast.idx.name), reversed(my_scope)), None)
+        if idx_sym is None or not (isinstance(idx_sym, VarSym) or isinstance(idx_sym, FnParamSym)):
             raise BadCoverage()
 
-        value_sym = next(filter(lambda x: isinstance(x, SimplifierSymbol) and (x.name == ast.value.name), reversed(my_scope)), None)
-        if value_sym is None or not (isinstance(value_sym, SimplifierVariableSymbol) or isinstance(value_sym, SimplifierFunctionParameterSymbol)):
+        value_sym = next(filter(lambda x: isinstance(x, Sym) and (x.name == ast.value.name), reversed(my_scope)), None)
+        if value_sym is None or not (isinstance(value_sym, VarSym) or isinstance(value_sym, FnParamSym)):
             raise BadCoverage()
 
-        iteration_target_type = self.visit(ast.arr, my_scope + [SimplifierIsExpressionVisit()])
-        if not isinstance(iteration_target_type, AST.ArrayType):
-            raise BadCoverage()
+        iteration_target_expr, iteration_target_type = self.visit(ast.arr, my_scope + [SimplifierIsExpressionVisit()])
+        ast.arr = iteration_target_expr
 
-        required_value_type = iteration_target_type.eleType if len(iteration_target_type.dimens) == 1 else AST.ArrayType(iteration_target_type.dimens[1:], iteration_target_type.eleType)
-        if not self.hard_compare_types(required_value_type, value_sym.resolved_type):
-            raise BadCoverage()
-
-        my_scope += [SimplifierIsLoopVisit(ast.loop, [])]
-        self.visit(ast.loop, my_scope)
-
-    def visitContinue(self, ast: AST.Continue, given_scope: List[SimplifierScopeObject]):
+        ast.loop = self.visit(ast.loop, my_scope)
         return ast
 
-    def visitBreak(self, ast: AST.Break, given_scope: List[SimplifierScopeObject]):
+    def visitContinue(self, ast: AST.Continue, given_scope: List[CtxObject]):
         return ast
 
-    def visitReturn(self, ast: AST.Return, given_scope: List[SimplifierScopeObject]):
-        current_function: Optional[SimplifierCurrentFunction] = next(filter(lambda x: isinstance(x, SimplifierCurrentFunction), reversed(given_scope)))
+    def visitBreak(self, ast: AST.Break, given_scope: List[CtxObject]):
+        return ast
+
+    def visitReturn(self, ast: AST.Return, given_scope: List[CtxObject]):
         if ast.expr is not None:
             expr, expr_type = self.visit(ast.expr, given_scope + [SimplifierIsExpressionVisit()])
             ast.expr = expr
         return ast
 
-    def visitBinaryOp(self, ast: AST.BinaryOp, given_scope: List[SimplifierScopeObject]):
+    def visitBinaryOp(self, ast: AST.BinaryOp, given_scope: List[CtxObject]):
         lhs_expr, lhs = self.visit(ast.left, given_scope)
         rhs_expr, rhs = self.visit(ast.right, given_scope)
         if ast.op == "+":
@@ -1013,7 +958,7 @@ class Simplifier(BaseVisitor):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.BoolType()
         raise BadCoverage()
 
-    def visitUnaryOp(self, ast: AST.UnaryOp, given_scope: List[SimplifierScopeObject]):
+    def visitUnaryOp(self, ast: AST.UnaryOp, given_scope: List[CtxObject]):
         rhs_expr, rhs = self.visit(ast.body, given_scope)
         if ast.op == "!":
             if isinstance(rhs, AST.BoolType):
@@ -1025,11 +970,11 @@ class Simplifier(BaseVisitor):
                 return AST.UnaryOp(ast.op, rhs_expr), AST.FloatType()
         raise BadCoverage()
 
-    def visitFuncCall(self, ast: AST.FuncCall, given_scope: List[SimplifierScopeObject]):
+    def visitFuncCall(self, ast: AST.FuncCall, given_scope: List[CtxObject]):
         ast.args = [self.visit(it, given_scope)[0] for it in ast.args]
-        for sym in filter(lambda x: isinstance(x, SimplifierSymbol), reversed(given_scope)):
+        for sym in filter(lambda x: isinstance(x, Sym), reversed(given_scope)):
             if sym.name == ast.funName:
-                if isinstance(sym, SimplifierFunctionSymbol):
+                if isinstance(sym, FunctionSym):
                     if isinstance(sym.original_ast, AST.FuncDecl):
                         return ast, sym.original_ast.retType
                     return ast, sym.original_ast[1]
@@ -1037,7 +982,7 @@ class Simplifier(BaseVisitor):
                     raise BadCoverage()
         raise BadCoverage()
 
-    def visitMethCall(self, ast: AST.MethCall, given_scope: List[SimplifierScopeObject]):
+    def visitMethCall(self, ast: AST.MethCall, given_scope: List[CtxObject]):
         receiver_expr, receiver_type = self.visit(ast.receiver, given_scope) # No need to append IsExpressionVisit.
         ast.args = [self.visit(it, given_scope)[0] for it in ast.args]
         if isinstance(receiver_type, AST.StructType):
@@ -1048,23 +993,23 @@ class Simplifier(BaseVisitor):
             return ast, method.retType
         raise BadCoverage()
 
-    def visitId(self, ast: AST.Id, given_scope: List[SimplifierScopeObject]):
+    def visitId(self, ast: AST.Id, given_scope: List[CtxObject]):
         id_mode: Union[SimplifierIsTypenameVisit, SimplifierIsExpressionVisit, None] = next(filter(lambda x: isinstance(x, SimplifierIsTypenameVisit) or isinstance(x, SimplifierIsExpressionVisit), reversed(given_scope)), None)
-        for sym in filter(lambda x: isinstance(x, SimplifierSymbol), reversed(given_scope)):
+        for sym in filter(lambda x: isinstance(x, Sym), reversed(given_scope)):
             if sym.name == ast.name:
-                if isinstance(sym, SimplifierStructSymbol) or isinstance(sym, SimplifierInterfaceSymbol):
+                if isinstance(sym, StructSym) or isinstance(sym, InterfaceSym):
                     if isinstance(id_mode, SimplifierIsExpressionVisit):
                         raise BadCoverage()
                     return sym.original_ast
-                elif isinstance(sym, SimplifierConstantSymbol):
+                elif isinstance(sym, ConstSym):
                     if isinstance(id_mode, SimplifierIsTypenameVisit):
                         raise BadCoverage()
                     return ast, sym.original_ast.conType
-                elif isinstance(sym, SimplifierVariableSymbol):
+                elif isinstance(sym, VarSym):
                     if isinstance(id_mode, SimplifierIsTypenameVisit):
                         raise BadCoverage()
                     return ast, sym.original_ast.varType
-                elif isinstance(sym, SimplifierFunctionParameterSymbol):
+                elif isinstance(sym, FnParamSym):
                     if isinstance(id_mode, SimplifierIsTypenameVisit):
                         raise BadCoverage()
                     return ast, sym.parameter_type
@@ -1072,14 +1017,14 @@ class Simplifier(BaseVisitor):
                     raise BadCoverage()
         raise BadCoverage()
 
-    def visitArrayCell(self, ast: AST.ArrayCell, given_scope: List[SimplifierScopeObject]):
+    def visitArrayCell(self, ast: AST.ArrayCell, given_scope: List[CtxObject]):
         receiver_expr, receiver_type = self.visit(ast.arr, given_scope) # No need to append IsExpressionVisit.
         ast.idx = [self.visit(it, given_scope)[0] for it in ast.idx]
         if len(receiver_type.dimens) == len(ast.idx):
             return ast, receiver_type.eleType
         return ast, AST.ArrayType(receiver_type.dimens[len(ast.idx):], receiver_type.eleType)
 
-    def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: List[SimplifierScopeObject]):
+    def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: List[CtxObject]):
         receiver_expr, receiver_type = self.visit(ast.receiver, given_scope) # No need to append IsExpressionVisit.
         if not isinstance(receiver_type, AST.StructType):
             raise BadCoverage()
@@ -1098,12 +1043,12 @@ class Simplifier(BaseVisitor):
     def visitStringLiteral(self, ast, param):
         return ast, AST.StringType()
 
-    def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[SimplifierScopeObject]):
+    def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[CtxObject]):
         dimensions = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
         ele_type = self.visit(ast.eleType, given_scope + [SimplifierIsTypenameVisit()])
         return AST.ArrayLiteral(dimensions, ast.eleType, self.simplify_nested_list(ast, ast.value, ele_type, dimensions, given_scope)), AST.ArrayType(dimensions, ele_type)
 
-    def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[SimplifierScopeObject]):
+    def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[CtxObject]):
         # Find the struct name.
         struct = self.visit(AST.Id(ast.name), given_scope + [SimplifierIsTypenameVisit()])
         if not isinstance(struct, AST.StructType):
@@ -1395,7 +1340,10 @@ class CodeGenerator(BaseVisitor,Utils):
         return None
 
     def visitStructLiteral(self, ast, param):
-        return None
+        raise BadCoverage()
+
+    def visitConcreteStructLiteral(self, ast: ConcreteStructLiteral, o):
+        pass
 
     def visitNilLiteral(self, ast, o):
         if "frame" not in o:
