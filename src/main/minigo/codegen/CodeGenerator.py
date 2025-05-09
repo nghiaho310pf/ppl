@@ -1179,7 +1179,7 @@ class CodeGenerator(BaseVisitor,Utils):
             self.emit.printout(self.emit.emitVAR(index, ast.varName, ast.varType, frame.getStartLabel(), frame.getEndLabel(), frame))
             if ast.varInit:
                 self.emit.printout(self.emit.emitPUSHICONST(ast.varInit.value, frame))
-                self.emit.printout(self.emit.emitWRITEVAR(ast.varName, ast.varType, index,  frame))
+                self.emit.printout(self.emit.emitWRITEVAR(ast.varName, ast.varType, index, frame))
         return o
 
     def visitConstDecl(self, ast, param):
