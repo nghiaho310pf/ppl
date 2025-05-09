@@ -1,8 +1,8 @@
 """
  * @author nghia.ho310pf
  * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
+ * @note https://www.youtube.com/watch?v=2gLpUVYyYGk
 """
-import inspect
 from typing import Optional, List, Dict, Union, Tuple
 
 import AST
@@ -44,7 +44,7 @@ class ClassType(AST.Type):
 
 class BadCoverage(Exception):
     def __str__(self):
-        return f"Static checker couldn't cover the AST simplifier"
+        return f"Either input AST has an error that would have been caught by StaticChecker, or Simplifier/CodeGeneration has a bug"
 
 class CtxObject:
     def __init__(self):
@@ -1354,10 +1354,11 @@ class CodeGenerator(BaseVisitor,Utils):
         return o
 
     def visitForStep(self, ast, param):
-        return None
+        pass
 
     def visitForEach(self, ast, param):
-        return None
+        # Assignment 4 spec says these evil little constructs don't exist. :)
+        raise BadCoverage()
 
     def visitContinue(self, ast, param):
         return None
