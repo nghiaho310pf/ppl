@@ -641,3 +641,121 @@ class CheckCodeGenSuite(unittest.TestCase):
         """
         o = "5"
         self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_interface_1(self):
+        i = """
+            type Printer interface {
+                print()
+            }
+    
+            type A struct {}
+    
+            func (a A) print() {
+                putString("A")
+            }
+    
+            func main() {
+                var p Printer = A{}
+                p.print()
+            }
+        """
+        o = "A"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_interface_2(self):
+        i = """
+            type Printer interface {
+                print()
+            }
+    
+            type B struct {}
+    
+            func (b B) print() {
+                putString("B")
+            }
+    
+            func usePrinter(p Printer) {
+                p.print()
+            }
+    
+            func main() {
+                usePrinter(B{})
+            }
+        """
+        o = "B"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_interface_3(self):
+        i = """
+            type Printer interface {
+                print()
+            }
+    
+            type A struct {}
+            type B struct {}
+    
+            func (a A) print() {
+                putString("A")
+            }
+    
+            func (b B) print() {
+                putString("B")
+            }
+    
+            func main() {
+                var p Printer = A{}
+                p.print()
+                p = B{}
+                p.print()
+            }
+        """
+        o = "AB"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_interface_4(self):
+        i = """
+            type Printer interface {
+                print()
+            }
+    
+            type Verbose struct {}
+    
+            func (v Verbose) print() {
+                putString("Verbose")
+            }
+    
+            func (v Verbose) debug() {
+                putString("Debug")
+            }
+    
+            func main() {
+                var p Printer = Verbose{}
+                p.print()
+            }
+        """
+        o = "Verbose"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_interface_5(self):
+        i = """
+            type Printer interface {
+                print()
+            }
+    
+            type A struct {}
+            type B struct {}
+    
+            func (a A) print() { putString("A") }
+            func (b B) print() { putString("B") }
+    
+            func doPrint(p Printer) {
+                p.print()
+            }
+    
+            func main() {
+                doPrint(A{})
+                doPrint(B{})
+            }
+        """
+        o = "AB"
+        self.assertTrue(TestCodeGen.test(i, o, n()))

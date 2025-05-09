@@ -1376,7 +1376,6 @@ class CodeGenerator(BaseVisitor, Utils):
         for method in ast.methods:
             self.visit(method, o)
 
-        self.emit_init_clinit(ast.name)
         sub_emit.emitEPILOG()
 
         self.emit = old_emit
