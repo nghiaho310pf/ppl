@@ -3,16 +3,17 @@
  * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
  * @note https://www.youtube.com/watch?v=_YJCm_dUoHc
 """
-from typing import Optional, List, Dict, Union, Tuple
+from abc import ABC
+from functools import reduce
+from typing import Optional, List, Union, Tuple
 
 import AST
-from Utils import Utils
 import StaticCheck
 from Emitter import Emitter
 from Frame import Frame
-from abc import ABC
-from functools import reduce
+from Utils import Utils
 from Visitor import BaseVisitor
+
 
 class Val(ABC):
     pass
@@ -913,22 +914,22 @@ class Simplifier(BaseVisitor):
         if ast.op == "+":
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.IntType()
-            if isinstance(lhs, AST.FloatType) and  isinstance(rhs, AST.IntType):
+            if isinstance(lhs, AST.FloatType) and isinstance(rhs, AST.IntType):
                 return AST.BinaryOp(ast.op, lhs_expr, ConvertIntToFloat(rhs_expr)), AST.FloatType()
-            if isinstance(lhs, AST.IntType) and  isinstance(rhs, AST.FloatType):
+            if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.FloatType):
                 return AST.BinaryOp(ast.op, ConvertIntToFloat(lhs_expr), rhs_expr), AST.FloatType()
-            if isinstance(lhs, AST.FloatType) and  isinstance(rhs, AST.FloatType):
+            if isinstance(lhs, AST.FloatType) and isinstance(rhs, AST.FloatType):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.FloatType()
             if isinstance(lhs, AST.StringType) and isinstance(rhs, AST.StringType):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.StringType()
         if ast.op in ["-", "*", "/"]:
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.IntType()
-            if isinstance(lhs, AST.FloatType) and  isinstance(rhs, AST.IntType):
+            if isinstance(lhs, AST.FloatType) and isinstance(rhs, AST.IntType):
                 return AST.BinaryOp(ast.op, lhs_expr, ConvertIntToFloat(rhs_expr)), AST.FloatType()
-            if isinstance(lhs, AST.IntType) and  isinstance(rhs, AST.FloatType):
+            if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.FloatType):
                 return AST.BinaryOp(ast.op, ConvertIntToFloat(lhs_expr), rhs_expr), AST.FloatType()
-            if isinstance(lhs, AST.FloatType) and  isinstance(rhs, AST.FloatType):
+            if isinstance(lhs, AST.FloatType) and isinstance(rhs, AST.FloatType):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.FloatType()
         if ast.op == "%":
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
@@ -1074,7 +1075,7 @@ class Simplifier(BaseVisitor):
 
 ###### End of simplifier ######
 
-class CodeGenerator(BaseVisitor,Utils):
+class CodeGenerator(BaseVisitor, Utils):
     emit: Optional[Emitter]
     simplifier: Optional[Simplifier]
 
@@ -1131,19 +1132,19 @@ class CodeGenerator(BaseVisitor,Utils):
 
     def init(self):
         mem = [
-            StaticCheck.Symbol("getInt",StaticCheck.MType([],AST.IntType()),CName("io",True)),
-            StaticCheck.Symbol("putInt",StaticCheck.MType([AST.IntType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("putIntLn",StaticCheck.MType([AST.IntType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("getFloat",StaticCheck.MType([],AST.FloatType()),CName("io",True)),
-            StaticCheck.Symbol("putFloat",StaticCheck.MType([AST.FloatType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("putFloatLn",StaticCheck.MType([AST.FloatType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("getBool",StaticCheck.MType([],AST.BoolType()),CName("io",True)),
-            StaticCheck.Symbol("putBool",StaticCheck.MType([AST.BoolType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("putBoolLn",StaticCheck.MType([AST.BoolType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("getString",StaticCheck.MType([],AST.StringType()),CName("io",True)),
-            StaticCheck.Symbol("putString",StaticCheck.MType([AST.StringType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("putStringLn",StaticCheck.MType([AST.StringType()],AST.VoidType()),CName("io",True)),
-            StaticCheck.Symbol("putLn",StaticCheck.MType([],AST.VoidType()),CName("io",True))
+            StaticCheck.Symbol("getInt", StaticCheck.MType([], AST.IntType()), CName("io", True)),
+            StaticCheck.Symbol("putInt", StaticCheck.MType([AST.IntType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("putIntLn", StaticCheck.MType([AST.IntType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("getFloat", StaticCheck.MType([], AST.FloatType()), CName("io", True)),
+            StaticCheck.Symbol("putFloat", StaticCheck.MType([AST.FloatType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("putFloatLn", StaticCheck.MType([AST.FloatType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("getBool", StaticCheck.MType([], AST.BoolType()), CName("io", True)),
+            StaticCheck.Symbol("putBool", StaticCheck.MType([AST.BoolType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("putBoolLn", StaticCheck.MType([AST.BoolType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("getString", StaticCheck.MType([], AST.StringType()), CName("io", True)),
+            StaticCheck.Symbol("putString", StaticCheck.MType([AST.StringType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("putStringLn", StaticCheck.MType([AST.StringType()], AST.VoidType()), CName("io", True)),
+            StaticCheck.Symbol("putLn", StaticCheck.MType([], AST.VoidType()), CName("io", True))
         ]
         return mem
 

@@ -1,7 +1,8 @@
-import StaticCheck
 import AST
-from MachineCode import JasminCode
 import CodeGenError
+import StaticCheck
+from MachineCode import JasminCode
+
 
 class Emitter():
     def __init__(self, filename):
@@ -777,9 +778,3 @@ class Emitter():
 
     def clearBuff(self):
         self.buff.clear()
-
-
-
-
-
-        

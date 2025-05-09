@@ -3,30 +3,30 @@ import subprocess
 from io import StringIO
 
 from antlr4 import *
-from antlr4.error.ErrorListener import ConsoleErrorListener,ErrorListener
-from MiniGoLexer import MiniGoLexer
-from MiniGoParser import MiniGoParser
+from antlr4.error.ErrorListener import ConsoleErrorListener
 
-from StaticError import StaticError
-from StaticCheck import StaticChecker
-from lexererr import *
 from ASTGeneration import ASTGeneration
 from CodeGenerator import CodeGenerator
+from MiniGoLexer import MiniGoLexer
+from MiniGoParser import MiniGoParser
+from StaticCheck import StaticChecker
+from StaticError import StaticError
+from lexererr import *
 from run import JAVA_EXE_PATH
 
 
 class TestLexer:
     @staticmethod
-    def checkLexeme(input,expect,num):
+    def checkLexeme(input, expect, num):
         input_stream = InputStream(input)
         dest = StringIO()
         lexer = MiniGoLexer(input_stream)
         try:
-            TestLexer.printLexeme(dest,lexer)
-        except (ErrorToken,UncloseString,IllegalEscape) as err:
+            TestLexer.printLexeme(dest, lexer)
+        except (ErrorToken, UncloseString, IllegalEscape) as err:
             dest.write(err.message)
         except Exception as err:
-            dest.write(str(err)+"\n")
+            dest.write(str(err) + "\n")
         line = dest.getvalue()
 
         if line != expect:
@@ -36,31 +36,38 @@ class TestLexer:
         # return line == expect
         return True
 
-    @staticmethod    
-    def printLexeme(dest,lexer):
+    @staticmethod
+    def printLexeme(dest, lexer):
         tok = lexer.nextToken()
         if tok.type != Token.EOF:
-            dest.write(tok.text+",")
-            TestLexer.printLexeme(dest,lexer)
+            dest.write(tok.text + ",")
+            TestLexer.printLexeme(dest, lexer)
         else:
             dest.write("<EOF>")
+
+
 class NewErrorListener(ConsoleErrorListener):
     INSTANCE = None
+
     def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e):
-        raise SyntaxException("Error on line "+ str(line) + " col " + str(column + 1)+ ": " + offendingSymbol.text)
+        raise SyntaxException("Error on line " + str(line) + " col " + str(column + 1) + ": " + offendingSymbol.text)
+
+
 NewErrorListener.INSTANCE = NewErrorListener()
 
+
 class SyntaxException(Exception):
-    def __init__(self,msg):
+    def __init__(self, msg):
         self.message = msg
+
 
 class TestParser:
     @staticmethod
     def createErrorListener():
-         return NewErrorListener.INSTANCE
+        return NewErrorListener.INSTANCE
 
     @staticmethod
-    def checkParser(input,expect,num):
+    def checkParser(input, expect, num):
         input_stream = InputStream(input)
         dest = StringIO()
         lexer = MiniGoLexer(input_stream)
@@ -87,9 +94,10 @@ class TestParser:
         # return line == expect
         return True
 
+
 class TestAST:
     @staticmethod
-    def checkASTGen(input,expect,num):
+    def checkASTGen(input, expect, num):
         input_stream = InputStream(input)
         dest = StringIO()
 
@@ -159,6 +167,7 @@ class TestChecker:
         # return line == expect
         return True
 
+
 class TestCodeGen():
     @staticmethod
     def test(input, expect, num):
@@ -173,6 +182,8 @@ class TestCodeGen():
             parser = MiniGoParser(tokens)
             tree = parser.program()
             asttree = ASTGeneration().visit(tree)
+            checker = StaticChecker(asttree)
+            checker.check()
         else:
             asttree = input
 
