@@ -700,6 +700,8 @@ class StaticChecker(BaseVisitor):
         sym.being_checked = True
         for i, element in enumerate(sym.original_ast.elements):
             field_name, field_type = element
+            if field_name == "inner":
+                raise StaticError.Redeclared(StaticError.Field(), element[0])
             for existing_field_name, existing_field_type in sym.original_ast.elements[:i]:
                 if field_name == existing_field_name:
                     raise StaticError.Redeclared(StaticError.Field(), element[0])
