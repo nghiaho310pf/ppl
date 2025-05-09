@@ -1186,21 +1186,32 @@ class CodeGenerator(BaseVisitor,Utils):
         # TODO:
         return o
 
-    def visitFuncDecl(self, ast, o):
+    def visitFuncDecl(self, ast: AST.FuncDecl, o):
         frame = Frame(ast.name, ast.retType)
-        isMain = ast.name == "main"
-        if isMain:
+        is_main = ast.name == "main"
+        if is_main:
             mtype = StaticCheck.MType([AST.ArrayType([None],AST.StringType())], AST.VoidType())
         else:
-            mtype = StaticCheck.MType(list(map(lambda x: x.parType, ast.params)), ast.retType)
+            param_types = [
+                ClassType(param.parName) if isinstance(param.parType, AST.StructType) or isinstance(param.parType, AST.InterfaceType) else param.parType
+                for param in ast.params
+            ]
+            mtype = StaticCheck.MType(param_types, ast.retType)
         o['env'][0].append(StaticCheck.Symbol(ast.name, mtype, CName(self.className)))
         env = o.copy()
         env['frame'] = frame
         self.emit.printout(self.emit.emitMETHOD(ast.name, mtype, True, frame))
         frame.enterScope(True)
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
-        env['env'] = [[]] + env['env']
-        if isMain:
+        env['env'] = [[
+            StaticCheck.Symbol(
+                param.parName,
+                ClassType(param.parName) if isinstance(param.parType, AST.StructType) or isinstance(param.parType, AST.InterfaceType) else param.parType,
+                Index(frame.getNewIndex())
+            )
+            for param in ast.params
+        ]] + env['env']
+        if is_main:
             self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "args", AST.ArrayType([None],AST.StringType()), frame.getStartLabel(), frame.getEndLabel(), frame))
         else:
             env = reduce(lambda acc,e: self.visit(e,acc),ast.params,env)
@@ -1212,8 +1223,38 @@ class CodeGenerator(BaseVisitor,Utils):
         frame.exitScope()
         return o
 
-    def visitMethodDecl(self, ast, param):
-        return None
+    def visitMethodDecl(self, ast: AST.MethodDecl, o):
+        frame = Frame(ast.fun.name, ast.fun.retType)
+        recv_type: AST.StructType = ast.recType
+        param_types = [
+            ClassType(param.parName) if isinstance(param.parType, AST.StructType) or isinstance(param.parType, AST.InterfaceType) else param.parType
+            for param in ast.fun.params
+        ]
+        mtype = StaticCheck.MType(param_types, ast.fun.retType)
+        o['env'][0].append(StaticCheck.Symbol(ast.fun.name, mtype, CName(recv_type.name)))
+        env = o.copy()
+        env['frame'] = frame
+        self.emit.printout(self.emit.emitMETHOD(ast.fun.name, mtype, False, frame))
+        frame.enterScope(True)
+        self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
+        env['env'] = [[
+            StaticCheck.Symbol(ast.receiver, ClassType(recv_type.name), Index(frame.getNewIndex()))
+                      ] + [
+            StaticCheck.Symbol(
+                param.parName,
+                ClassType(param.parName) if isinstance(param.parType, AST.StructType) or isinstance(param.parType, AST.InterfaceType) else param.parType,
+                Index(frame.getNewIndex())
+            )
+            for param in ast.fun.params
+        ]] + env['env']
+        env = reduce(lambda acc,e: self.visit(e,acc), ast.fun.params, env)
+        self.visit(ast.fun.body,env)
+        self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
+        if type(ast.fun.retType) is AST.VoidType:
+            self.emit.printout(self.emit.emitRETURN(AST.VoidType(), frame))
+        self.emit.printout(self.emit.emitENDMETHOD(frame))
+        frame.exitScope()
+        return o
 
     def visitPrototype(self, ast, param):
         return None
@@ -1282,6 +1323,9 @@ class CodeGenerator(BaseVisitor,Utils):
         sub_emit.printout(sub_emit.emitRETURN(AST.VoidType(), frame))
         sub_emit.printout(sub_emit.emitENDMETHOD(frame))
         frame.exitScope()
+
+        for method in ast.methods:
+            self.visit(method, o)
 
         self.emitObjectInit(ast.name)
         sub_emit.emitEPILOG()
@@ -1459,7 +1503,6 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitFuncCall(self, ast, o):
         sym = next(filter(lambda x: x.name == ast.funName, o['env'][-1]),None)
         env = o.copy()
-        env['isLeft'] = False
         args = [self.visit(x, env)[0] for x in ast.args]
         j = self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}", sym.mtype, o['frame'])
         return ''.join(args) + j, sym.mtype
@@ -1485,7 +1528,7 @@ class CodeGenerator(BaseVisitor,Utils):
         return l_j + j, method.fun.retType
 
     def visitId(self, ast, o):
-        sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]),None) # reverse the damn thing!
+        sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]), None) # reverse the damn thing!
         is_left = ("isLeft" in o) and o["isLeft"]
         val = sym.value
         frame: Frame = o["frame"]
