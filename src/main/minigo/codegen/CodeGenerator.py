@@ -1134,9 +1134,6 @@ class CodeGenerator(BaseVisitor,Utils):
     def gen(self, ast, dir_):
         self.simplifier = Simplifier(ast)
         simplified = self.simplifier.simplify()
-
-        
-
         gl = self.init()
         self.astTree = simplified
         self.path = dir_
@@ -1309,7 +1306,9 @@ class CodeGenerator(BaseVisitor,Utils):
                 j, ty = self.visit(e, env)
                 self.emit.printout(j)
             else:
+                old_env = env
                 env = self.visit(e, env)
+                print(f"{old_env} + {e} = {env}")
         self.emit.printout(self.emit.emitLABEL(env['frame'].getEndLabel(), env['frame']))
         env['frame'].exitScope()
         return o
@@ -1317,11 +1316,40 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitAssign(self, ast, param):
         return None
 
-    def visitIf(self, ast, param):
-        return None
+    def visitIf(self, ast: AST.If, o):
+        frame: Frame = o["frame"]
+        
+        cond_j, cond_ty = self.visit(ast.expr, o)
+        l1 = frame.getNewLabel()
+        l2 = frame.getNewLabel()
 
-    def visitForBasic(self, ast, param):
-        return None
+        self.emit.printout(cond_j)
+        self.emit.printout(self.emit.emitIFFALSE(l1, frame))
+        then_j = self.visit(ast.thenStmt, o)
+        self.emit.printout(self.emit.emitGOTO(l2, frame))
+        self.emit.printout(self.emit.emitLABEL(l1, frame))
+        if ast.elseStmt is not None:
+            else_j = self.visit(ast.elseStmt, o)
+        self.emit.printout(self.emit.emitLABEL(l2, frame))
+        return o
+
+    def visitForBasic(self, ast: AST.ForBasic, o):
+        frame: Frame = o["frame"]
+        
+        frame.enterLoop()
+
+        cond_j, cond_ty = self.visit(ast.cond, o)
+        b = frame.getBreakLabel()
+        c = frame.getContinueLabel()
+        self.emit.printout(self.emit.emitLABEL(c, frame))
+        self.emit.printout(cond_j)
+        self.emit.printout(self.emit.emitIFFALSE(b, frame))
+        self.visit(ast.loop, o)
+        self.emit.printout(self.emit.emitGOTO(c, frame))
+        self.emit.printout(self.emit.emitLABEL(b, frame))
+
+        frame.exitLoop()
+        return o
 
     def visitForStep(self, ast, param):
         return None
@@ -1336,7 +1364,7 @@ class CodeGenerator(BaseVisitor,Utils):
         return None
 
     def visitReturn(self, ast: AST.Return, o):
-        frame = o["frame"]
+        frame: Frame = o["frame"]
         if ast.expr is None:
             j = self.emit.emitRETURN(AST.VoidType(), frame)
             self.emit.printout(j)
@@ -1387,7 +1415,7 @@ class CodeGenerator(BaseVisitor,Utils):
             e_j, e_ty = self.visit(ast.original_int_expr, o)
             return "", AST.IntType()
 
-        frame = o["frame"]
+        frame: Frame = o["frame"]
 
         o2 = o.copy()
         e_j, e_ty = self.visit(ast.original_int_expr, o2)
@@ -1410,7 +1438,7 @@ class CodeGenerator(BaseVisitor,Utils):
         sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]),None) # reverse the damn thing!
         is_left = ("isLeft" in o) and o["isLeft"]
         val = sym.value
-        frame = o["frame"]
+        frame: Frame = o["frame"]
         if is_left:
             j = self.emit.emitWRITEVAR(ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitPUTSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
         else:
@@ -1428,7 +1456,7 @@ class CodeGenerator(BaseVisitor,Utils):
         cls = field_type
         if isinstance(cls, AST.StructType) or isinstance(cls, AST.InterfaceType):
             cls = ClassType(cls.name)
-        frame = o["frame"]
+        frame: Frame = o["frame"]
         return l_j + self.emit.emitGETFIELD(f"{l_ty.name}/{ast.field}", cls, frame), field_type
 
     def visitIntLiteral(self, ast: AST.IntLiteral, o):
@@ -1439,19 +1467,19 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitFloatLiteral(self, ast: AST.FloatLiteral, o):
         if "frame" not in o:
             return "", AST.FloatType()
-        frame = o["frame"]
+        frame: Frame = o["frame"]
         return self.emit.emitPUSHFCONST(ast.value, frame), AST.FloatType()
 
     def visitBooleanLiteral(self, ast: AST.BooleanLiteral, o):
         if "frame" not in o:
             return "", AST.BoolType()
-        frame = o["frame"]
+        frame: Frame = o["frame"]
         return self.emit.emitPUSHICONST(1 if ast.value else 0, frame), AST.FloatType()
 
     def visitStringLiteral(self, ast, o):
         if "frame" not in o:
             return "", AST.StringType()
-        frame = o["frame"]
+        frame: Frame = o["frame"]
         return self.emit.emitPUSHCONST(ast.value, AST.StringType(), frame), AST.StringType()
 
     def visitArrayLiteral(self, ast, param):
@@ -1463,7 +1491,7 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitConcreteStructLiteral(self, ast: ConcreteStructLiteral, o):
         if "frame" not in o:
             return "", ClassType(ast.struct.name)
-        frame = o["frame"]
+        frame: Frame = o["frame"]
 
         j_new = self.emit.emitNEW(ast.struct.name, frame)
         j_dup = self.emit.emitDUP(frame)
@@ -1486,5 +1514,5 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitNilLiteral(self, ast, o):
         if "frame" not in o:
             return "", SimplifierNilType()
-        frame = o["frame"]
+        frame: Frame = o["frame"]
         return self.emit.emitPUSHNULL(frame), SimplifierNilType()

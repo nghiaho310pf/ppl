@@ -7,6 +7,8 @@
 '''
 from abc import ABC, abstractmethod, ABCMeta
 
+from CodeGenError import IllegalOperandException
+
 class MachineCode(ABC):
     @abstractmethod
     def emitPUSHNULL(self):

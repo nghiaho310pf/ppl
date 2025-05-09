@@ -120,7 +120,7 @@ class Emitter():
         frame.pop()
         if type(in_) is AST.IntType:
             return self.jvm.emitIALOAD()
-        elif type(in_) is cgen.ArrayType or type(in_) is cgen.ClassType or type(in_) is AST.StringType:
+        elif type(in_) is AST.ArrayType or type(in_) is cgen.ClassType or type(in_) is AST.StringType:
             return self.jvm.emitAALOAD()
         else:
             raise CodeGenError.IllegalOperandException(str(in_))
@@ -135,7 +135,7 @@ class Emitter():
         frame.pop()
         if type(in_) is AST.IntType:
             return self.jvm.emitIASTORE()
-        elif type(in_) is cgen.ArrayType or type(in_) is cgen.ClassType or type(in_) is AST.StringType:
+        elif type(in_) is AST.ArrayType or type(in_) is cgen.ClassType or type(in_) is AST.StringType:
             return self.jvm.emitAASTORE()
         else:
             raise CodeGenError.IllegalOperandException(str(in_))
@@ -200,7 +200,7 @@ class Emitter():
 
         if isinstance(inType, AST.IntType) or isinstance(inType, AST.BoolType):
             return self.jvm.emitISTORE(index)
-        elif isinstance(inType, cgen.ArrayType) or isinstance(inType, cgen.ClassType) or isinstance(inType, AST.StringType):
+        elif isinstance(inType, AST.ArrayType) or isinstance(inType, cgen.ClassType) or isinstance(inType, AST.StringType):
             return self.jvm.emitASTORE(index)
         else:
             raise CodeGenError.IllegalOperandException(name)
@@ -230,7 +230,7 @@ class Emitter():
         if isStatic:
             return self.jvm.emitSTATICFIELD(lexeme, self.getJVMType(in_), isFinal, value)
         else:
-            return self.jvm.emitFIELD(lexeme, self.getJVMType(in_), isFinal, value)
+            return self.jvm.emitINSTANCEFIELD(lexeme, self.getJVMType(in_), isFinal, value)
 
     def emitGETSTATIC(self, lexeme, in_, frame):
         #lexeme: String
