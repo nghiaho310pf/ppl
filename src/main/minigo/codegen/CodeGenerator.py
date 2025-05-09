@@ -112,18 +112,9 @@ class FnParamSym(Sym):
         super().__init__(name)
         self.parameter_type = parameter_type
 
-# For banning illegal returns.
+# Cheap hack for resolving methods.
 
-class CurrentFn(CtxObject):
-    original_ast: AST.FuncDecl
-
-    def __init__(self, original_ast: AST.FuncDecl):
-        super().__init__()
-        self.original_ast = original_ast
-
-# Cheap hacks for resolving types for methods.
-
-class CurrentMethod(CtxObject):
+class SimplifierUnresolvedMethod(CtxObject):
     original_ast: AST.MethodDecl
     struct_symbol: Optional[StructSym]
 
@@ -676,7 +667,7 @@ class Simplifier(BaseVisitor):
             elif isinstance(thing, AST.FuncDecl):
                 self.global_declarations.append(FunctionSym(thing.name, thing))
             elif isinstance(thing, AST.MethodDecl):
-                self.global_declarations.append(CurrentMethod(thing))
+                self.global_declarations.append(SimplifierUnresolvedMethod(thing))
             elif isinstance(thing, AST.ConstDecl):
                 self.global_declarations.append(ConstSym(thing.conName, thing))
             elif isinstance(thing, AST.VarDecl):
@@ -691,7 +682,7 @@ class Simplifier(BaseVisitor):
                 # Cheap hack to filter out the prelude.
                 if isinstance(sym.original_ast, AST.FuncDecl):
                     self.global_resolve_function_definition(sym, i)
-            elif isinstance(sym, CurrentMethod):
+            elif isinstance(sym, SimplifierUnresolvedMethod):
                 recv_ty: AST.Id = sym.original_ast.recType # NOTE: forced typing
                 recv_name = recv_ty.name
                 struct: Optional[StructSym] = next(filter(lambda x: isinstance(x, StructSym) and (x.name == recv_name), self.global_declarations))
@@ -721,7 +712,7 @@ class Simplifier(BaseVisitor):
             # Cheap hack to filter out the prelude.
             elif isinstance(sym, FunctionSym) and isinstance(sym.original_ast, AST.FuncDecl):
                 self.visit(sym.original_ast, my_scope)
-            elif isinstance(sym, CurrentMethod):
+            elif isinstance(sym, SimplifierUnresolvedMethod):
                 self.visit(sym.original_ast, my_scope + [sym])
             elif isinstance(sym, ConstSym):
                 self.visit(sym.original_ast, my_scope)
@@ -762,31 +753,17 @@ class Simplifier(BaseVisitor):
         return ast
 
     def visitFuncDecl(self, ast: AST.FuncDecl, given_scope: List[CtxObject]):
-        self_sym: Optional[FunctionSym] = next(filter(lambda x: isinstance(x, FunctionSym) and (x.original_ast == ast), reversed(given_scope)), None)
-        # Sanity check.
-        if self_sym is None:
-            raise BadCoverage()
-
         my_scope = given_scope.copy()
         for i, param in enumerate(ast.params):
             my_scope.append(FnParamSym(param.parName, ast.params[i].parType))
-
-        current_function_scope_object = CurrentFn(ast)
-        ast.body = self.visit(ast.body, my_scope + [current_function_scope_object])
+        ast.body = self.visit(ast.body, my_scope)
 
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[CtxObject]):
-        self_sym: Optional[CurrentMethod] = next(filter(lambda x: isinstance(x, CurrentMethod) and (x.original_ast == ast), reversed(given_scope)), None)
-        # Sanity check.
-        if self_sym is None:
-            raise BadCoverage()
-
         my_scope = given_scope.copy()
         my_scope.append(FnParamSym(ast.receiver, ast.recType))
         for i, param in enumerate(ast.fun.params):
             my_scope.append(FnParamSym(param.parName, param.parType))
-
-        current_function_scope_object = CurrentFn(ast.fun)
-        ast.fun.body = self.visit(ast.fun.body, my_scope + [current_function_scope_object])
+        ast.fun.body = self.visit(ast.fun.body, my_scope)
 
     def visitPrototype(self, ast, param):
         return ast # ???
@@ -1590,7 +1567,7 @@ class CodeGenerator(BaseVisitor,Utils):
         frame: Frame = o["frame"]
 
         method: AST.MethodDecl = next(filter(lambda x: x.fun.name == ast.metName, l_ty.methods))
-        mtype = StaticCheck.MType([param_type for param_name, param_type in method.fun.params], method.fun.retType)
+        mtype = StaticCheck.MType([param.parType for param in method.fun.params], method.fun.retType)
         j = self.emit.emitINVOKEVIRTUAL(f"{l_ty.name}/{ast.metName}", mtype, frame)
         return l_j + j, method.fun.retType
 
