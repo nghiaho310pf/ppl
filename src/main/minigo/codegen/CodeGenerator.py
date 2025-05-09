@@ -1,7 +1,7 @@
 """
  * @author nghia.ho310pf
  * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
- * @note https://www.youtube.com/watch?v=2gLpUVYyYGk
+ * @note https://www.youtube.com/watch?v=_YJCm_dUoHc
 """
 from typing import Optional, List, Dict, Union, Tuple
 
@@ -618,6 +618,7 @@ class Simplifier(BaseVisitor):
         sym.done_resolving = True
 
     def global_resolve_method_definition(self, ast: AST.MethodDecl, index_limit: int):
+        ast.recType = self.global_resolve_typename(ast.recType, index_limit)
         ast.fun.retType = self.global_resolve_typename(ast.fun.retType, index_limit)
         ast.fun.params = [AST.ParamDecl(it.parName, self.global_resolve_typename(it.parType, index_limit)) for it in ast.fun.params]
 
@@ -890,9 +891,8 @@ class Simplifier(BaseVisitor):
         condition_expr, condition_type = self.visit(ast.cond, my_scope + [SimplifierIsExpressionVisit()])
         ast.cond = condition_expr
 
-        # This is probably a statement.
-        upda_expr, upda_type = self.visit(ast.upda, my_scope)
-        ast.upda = upda_expr
+        # This is just an assign.
+        ast.upda = self.visit(ast.upda, my_scope)
 
         ast.loop = self.visit(ast.loop, my_scope)
         return ast
@@ -986,9 +986,10 @@ class Simplifier(BaseVisitor):
 
     def visitMethCall(self, ast: AST.MethCall, given_scope: List[CtxObject]):
         receiver_expr, receiver_type = self.visit(ast.receiver, given_scope) # No need to append IsExpressionVisit.
+        ast.receiver = receiver_expr
         ast.args = [self.visit(it, given_scope)[0] for it in ast.args]
         if isinstance(receiver_type, AST.StructType):
-            method: AST.MethodDecl = next(filter(lambda x: x.name == ast.metName, receiver_type.methods))
+            method: AST.MethodDecl = next(filter(lambda x: x.fun.name == ast.metName, receiver_type.methods))
             return ast, method.fun.retType
         if isinstance(receiver_type, AST.InterfaceType):
             method: AST.Prototype = next(filter(lambda x: x.name == ast.metName, receiver_type.methods))
@@ -1353,8 +1354,37 @@ class CodeGenerator(BaseVisitor,Utils):
         frame.exitLoop()
         return o
 
-    def visitForStep(self, ast, param):
-        pass
+    def visitForStep(self, ast: AST.ForStep, o):
+        env = o.copy()
+        frame: Frame = env["frame"]
+
+        # in addition to the new scope inside `ast.loop: Block` we need another one for the potential var decls
+        env["env"] = [[]] + env["env"]
+
+        frame.enterScope(False)
+        self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
+        if isinstance(ast.init, AST.Expr):
+            init_j, init_ty = self.visit(ast.init, env)
+            self.emit.printout(init_j)
+        else:
+            self.visit(ast.init, env)
+        frame.enterLoop()
+        self.emit.printout(self.emit.emitLABEL(frame.getContinueLabel(), frame))
+        cond_j, cond_ty = self.visit(ast.cond, env)
+        self.emit.printout(cond_j)
+        self.emit.printout(self.emit.emitIFFALSE(frame.getBreakLabel(), frame))
+        self.visit(ast.loop, env)
+        if isinstance(ast.init, AST.Expr):
+            upda_j, upda_ty = self.visit(ast.upda, env)
+            self.emit.printout(upda_j)
+        else:
+            self.visit(ast.upda, env)
+        self.emit.printout(self.emit.emitGOTO(frame.getContinueLabel(), frame))
+        self.emit.printout(self.emit.emitLABEL(frame.getBreakLabel(), frame))
+        frame.exitLoop()
+        self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
+        frame.exitScope()
+        return o
 
     def visitForEach(self, ast, param):
         # Assignment 4 spec says these evil little constructs don't exist. :)
@@ -1434,8 +1464,25 @@ class CodeGenerator(BaseVisitor,Utils):
         j = self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}", sym.mtype, o['frame'])
         return ''.join(args) + j, sym.mtype
 
-    def visitMethCall(self, ast, param):
-        return None
+    def visitMethCall(self, ast: AST.MethCall, o):
+        l_j, l_ty = self.visit(ast.receiver, o)
+        if not (isinstance(l_ty, AST.StructType) or isinstance(l_ty, AST.InterfaceType)):
+            raise BadCoverage()
+        if not isinstance(l_ty, AST.StructType):
+            raise BadCoverage() # for now
+
+        frame: Frame = o["frame"]
+
+        method: AST.MethodDecl = next(filter(lambda x: x.fun.name == ast.metName, l_ty.methods))
+        rec_type: AST.StructType = method.recType
+        param_types = [
+            ClassType(param_name) if isinstance(param_type, AST.StructType) or isinstance(param_type, AST.InterfaceType) else param_type
+            for param_name, param_type in method.fun.params
+        ]
+        ret_type = ClassType(method.fun.retType.name) if isinstance(method.fun.retType, AST.StructType) or isinstance(method.fun.retType, AST.InterfaceType) else method.fun.retType
+        mtype = StaticCheck.MType(param_types, ret_type)
+        j = self.emit.emitINVOKEVIRTUAL(f"{l_ty.name}/{ast.metName}", mtype, frame)
+        return l_j + j, method.fun.retType
 
     def visitId(self, ast, o):
         sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]),None) # reverse the damn thing!
