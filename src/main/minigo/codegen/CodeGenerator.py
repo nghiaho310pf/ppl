@@ -1184,11 +1184,14 @@ class CodeGenerator(BaseVisitor,Utils):
                     if self.can_be_globally_directly_initialized(z.varInit):
                         continue
                     self.emit.printout(self.visit(z.varInit, env)[0])
-                    self.emit.printout(self.emit.emitGETSTATIC(f"{className}/{z.varName}", sym.mtype, frame))
+                    cls = ClassType(z.varType) if isinstance(z.varType, AST.StructType) or isinstance(z.varType, AST.InterfaceType) else z.varType
+                    self.emit.printout(self.emit.emitPUTSTATIC(f"{className}/{z.varName}", cls, frame))
                 elif isinstance(z, AST.ConstDecl):
                     if self.can_be_globally_directly_initialized(z.iniExpr):
                         continue
                     self.emit.printout(self.visit(z.iniExpr, env)[0])
+                    cls = ClassType(z.varType) if isinstance(z.varType, AST.StructType) or isinstance(z.varType, AST.InterfaceType) else z.varType
+                    self.emit.printout(self.emit.emitPUTSTATIC(f"{className}/{z.varName}", cls, frame))
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
         self.emit.printout(self.emit.emitRETURN(AST.VoidType(), frame))
         self.emit.printout(self.emit.emitENDMETHOD(frame) + "\n")
@@ -1448,7 +1451,8 @@ class CodeGenerator(BaseVisitor,Utils):
         c = frame.getContinueLabel()
         self.emit.printout(self.emit.emitLABEL(c, frame))
         self.emit.printout(cond_j)
-        self.emit.printout(self.emit.emitIFFALSE(b, frame))
+        q = self.emit.emitIFFALSE(b, frame)
+        self.emit.printout(q)
         self.visit(ast.loop, o)
         self.emit.printout(self.emit.emitGOTO(c, frame))
         self.emit.printout(self.emit.emitLABEL(b, frame))
@@ -1471,17 +1475,19 @@ class CodeGenerator(BaseVisitor,Utils):
         else:
             self.visit(ast.init, env)
         frame.enterLoop()
-        self.emit.printout(self.emit.emitLABEL(frame.getContinueLabel(), frame))
+        actual_loop_start = frame.getNewLabel()
+        self.emit.printout(self.emit.emitLABEL(actual_loop_start, frame))
         cond_j, cond_ty = self.visit(ast.cond, env)
         self.emit.printout(cond_j)
         self.emit.printout(self.emit.emitIFFALSE(frame.getBreakLabel(), frame))
         self.visit(ast.loop, env)
+        self.emit.printout(self.emit.emitLABEL(frame.getContinueLabel(), frame))
         if isinstance(ast.init, AST.Expr):
             upda_j, upda_ty = self.visit(ast.upda, env)
             self.emit.printout(upda_j)
         else:
             self.visit(ast.upda, env)
-        self.emit.printout(self.emit.emitGOTO(frame.getContinueLabel(), frame))
+        self.emit.printout(self.emit.emitGOTO(actual_loop_start, frame))
         self.emit.printout(self.emit.emitLABEL(frame.getBreakLabel(), frame))
         frame.exitLoop()
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
@@ -1492,11 +1498,15 @@ class CodeGenerator(BaseVisitor,Utils):
         # Assignment 4 spec says these evil little constructs don't exist. :)
         raise BadCoverage()
 
-    def visitContinue(self, ast, param):
-        return None
+    def visitContinue(self, ast: AST.Continue, o):
+        frame: Frame = o["frame"]
+        self.emit.printout(self.emit.emitGOTO(frame.getContinueLabel(), frame))
+        return o
 
-    def visitBreak(self, ast, param):
-        return None
+    def visitBreak(self, ast: AST.Break, o):
+        frame: Frame = o["frame"]
+        self.emit.printout(self.emit.emitGOTO(frame.getBreakLabel(), frame))
+        return o
 
     def visitReturn(self, ast: AST.Return, o):
         frame: Frame = o["frame"]
