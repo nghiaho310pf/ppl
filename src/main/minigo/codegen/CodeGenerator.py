@@ -1386,7 +1386,8 @@ class CodeGenerator(BaseVisitor,Utils):
         o_lhs["isLeft"] = True
 
         lhs_j, lhs_ty = self.visit(ast.lhs, o_lhs)
-        self.emit.printout(rhs_j + lhs_j)
+        self.emit.printout(rhs_j)
+        self.emit.printout(lhs_j)
         return o
 
     def visitIf(self, ast: AST.If, o):
@@ -1565,11 +1566,12 @@ class CodeGenerator(BaseVisitor,Utils):
             raise BadCoverage() # for now
 
         frame: Frame = o["frame"]
+        args = [self.visit(x, o)[0] for x in ast.args]
 
         method: AST.MethodDecl = next(filter(lambda x: x.fun.name == ast.metName, l_ty.methods))
         mtype = StaticCheck.MType([param.parType for param in method.fun.params], method.fun.retType)
         j = self.emit.emitINVOKEVIRTUAL(f"{l_ty.name}/{ast.metName}", mtype, frame)
-        return l_j + j, method.fun.retType
+        return l_j + ''.join(args) + j, method.fun.retType
 
     def visitId(self, ast, o):
         sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]), None) # reverse the damn thing!
@@ -1586,12 +1588,19 @@ class CodeGenerator(BaseVisitor,Utils):
         return None
 
     def visitFieldAccess(self, ast: AST.FieldAccess, o):
-        l_j, l_ty = self.visit(ast.receiver, o)
+        is_left = "isLeft" in o and o["isLeft"]
+        env = o.copy()
+        env["isLeft"] = False # the stuff under this can stay as GET; we're only storing 1 thing.
+        l_j, l_ty = self.visit(ast.receiver, env)
         if not isinstance(l_ty, AST.StructType):
             raise BadCoverage()
         field_type = next(filter(lambda x: x[0] == ast.field, l_ty.elements))[1]
         frame: Frame = o["frame"]
-        return l_j + self.emit.emitGETFIELD(f"{l_ty.name}/{ast.field}", field_type, frame), field_type
+        if is_left:
+            j = self.emit.emitPUTFIELD(f"{l_ty.name}/{ast.field}", field_type, frame)
+        else:
+            j = self.emit.emitGETFIELD(f"{l_ty.name}/{ast.field}", field_type, frame)
+        return l_j + j, field_type
 
     def visitIntLiteral(self, ast: AST.IntLiteral, o):
         if "frame" not in o:

@@ -706,7 +706,8 @@ class Emitter():
 
     def emitEPILOG(self):
         file = open(self.filename, "w")
-        file.write(''.join(self.buff))
+        for b in self.buff:
+            file.write(b)
         file.close()
 
     ''' print out the code to screen
