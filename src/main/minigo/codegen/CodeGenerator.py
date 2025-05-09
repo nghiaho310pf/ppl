@@ -424,7 +424,7 @@ class Simplifier(BaseVisitor):
                         isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) + float(rhs.value))
                 elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
-                    return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
+                    return AST.StringLiteral(f"\"{lhs.value[1:-1]}{rhs.value[1:-1]}\"")
                 else:
                     raise BadCoverage()
             elif ast.op == "-":
@@ -1102,6 +1102,24 @@ class CodeGenerator(BaseVisitor,Utils):
             return ConcreteStructLiteral(typename, [])
         return AST.NilLiteral()
 
+    def can_be_globally_directly_initialized(self, value: AST.Literal):
+        if isinstance(value, AST.IntLiteral) or isinstance(value, AST.FloatLiteral):
+            return True
+        if isinstance(value, AST.BooleanLiteral):
+            return True
+        if isinstance(value, AST.StringLiteral):
+            return True
+        return False
+
+    def make_default_static_field_value(self, value: AST.Literal):
+        if isinstance(value, AST.IntLiteral) or isinstance(value, AST.FloatLiteral):
+            return str(value.value)
+        if isinstance(value, AST.BooleanLiteral):
+            return str(1 if value.value else 0)
+        if isinstance(value, AST.StringLiteral):
+            return value.value
+        return None
+
     def __init__(self):
         self.className = "MiniGoClass"
         self.astTree = None
@@ -1136,21 +1154,45 @@ class CodeGenerator(BaseVisitor,Utils):
         self.emit = Emitter(dir_ + "/" + self.className + ".j")
         self.visit(simplified, gl)
 
-    def emitObjectInit(self, className=None):
+    def emit_init_clinit(self, className=None, global_vars_consts: Optional[List[Union[AST.VarDecl, AST.ConstDecl]]]=None, o=None):
         if className is None:
             className = self.className
+
+        # Empty <init> that just calls java.lang.Object.<init>
         frame = Frame("<init>", AST.VoidType())
         self.emit.printout(self.emit.emitMETHOD("<init>", StaticCheck.MType([], AST.VoidType()), False, frame))
         frame.enterScope(True)
         self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "this", ClassType(className), frame.getStartLabel(), frame.getEndLabel(), frame))
-
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
         self.emit.printout(self.emit.emitREADVAR("this", ClassType(className), 0, frame))
         self.emit.printout(self.emit.emitINVOKESPECIAL(frame))
-
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
         self.emit.printout(self.emit.emitRETURN(AST.VoidType(), frame))
         self.emit.printout(self.emit.emitENDMETHOD(frame) + "\n")
+
+        # Where the cool stuff really happens (<clinit>)
+        frame = Frame("<clinit>", AST.VoidType())
+        self.emit.printout(self.emit.emitMETHOD("<clinit>", StaticCheck.MType([], AST.VoidType()), False, frame))
+        frame.enterScope(True)
+        self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
+        ## The good stuff
+        if global_vars_consts is not None and o is not None:
+            env = o.copy()
+            env["frame"] = frame
+            for z in global_vars_consts:
+                if isinstance(z, AST.VarDecl):
+                    if self.can_be_globally_directly_initialized(z.varInit):
+                        continue
+                    self.emit.printout(self.visit(z.varInit, env)[0])
+                    self.emit.printout(self.emit.emitGETSTATIC(f"{className}/{z.varName}", sym.mtype, frame))
+                elif isinstance(z, AST.ConstDecl):
+                    if self.can_be_globally_directly_initialized(z.iniExpr):
+                        continue
+                    self.emit.printout(self.visit(z.iniExpr, env)[0])
+        self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
+        self.emit.printout(self.emit.emitRETURN(AST.VoidType(), frame))
+        self.emit.printout(self.emit.emitENDMETHOD(frame) + "\n")
+
         frame.exitScope()
 
     # Visitor methods
@@ -1159,7 +1201,7 @@ class CodeGenerator(BaseVisitor,Utils):
         env = {'env': [c]}
         self.emit.printout(self.emit.emitPROLOG(self.className, "java.lang.Object", False))
         env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: not (isinstance(x, AST.StructType) or isinstance(x, AST.InterfaceType)), ast.decl), env)
-        self.emitObjectInit()
+        self.emit_init_clinit(None, list(filter(lambda x: isinstance(x, AST.VarDecl) or isinstance(x, AST.ConstDecl), ast.decl)), env)
         env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: isinstance(x, AST.StructType) or isinstance(x, AST.InterfaceType), ast.decl), env)
         self.emit.printout(self.emit.emitEPILOG())
         return env
@@ -1167,23 +1209,39 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitVarDecl(self, ast: AST.VarDecl, o):
         if 'frame' not in o: # global var
             o['env'][0].append(StaticCheck.Symbol(ast.varName, ast.varType, CName(self.className)))
-            self.emit.printout(self.emit.emitATTRIBUTE(ast.varName, ast.varType, True, False, str(ast.varInit.value) if ast.varInit else None))
+            v = self.make_default_static_field_value(ast.varInit) if self.can_be_globally_directly_initialized(ast.varInit) else None
+            self.emit.printout(self.emit.emitATTRIBUTE(ast.varName, ast.varType, True, False, v))
         else:
             frame = o['frame']
             index = frame.getNewIndex()
+            cls = ClassType(ast.varType.name) if isinstance(ast.varType, AST.StructType) or isinstance(ast.varName, AST.InterfaceType) else ast.varType
             o['env'][0].append(StaticCheck.Symbol(ast.varName, ast.varType, Index(index)))
-            self.emit.printout(self.emit.emitVAR(index, ast.varName, ast.varType, frame.getStartLabel(), frame.getEndLabel(), frame))
+            self.emit.printout(self.emit.emitVAR(index, ast.varName, cls, frame.getStartLabel(), frame.getEndLabel(), frame))
             if ast.varInit is not None:
                 init_j, init_ty = self.visit(ast.varInit, o)
                 self.emit.printout(init_j)
-                self.emit.printout(self.emit.emitWRITEVAR(ast.varName, ast.varType, index, frame))
+                self.emit.printout(self.emit.emitWRITEVAR(ast.varName, cls, index, frame))
         return o
 
-    def visitConstDecl(self, ast, param):
-        return None
+    def visitConstDecl(self, ast: AST.ConstDecl, o):
+        if 'frame' not in o: # global const
+            o['env'][0].append(StaticCheck.Symbol(ast.conName, ast.conType, CName(self.className)))
+            v = self.make_default_static_field_value(ast.iniExpr) if self.can_be_globally_directly_initialized(ast.iniExpr) else None
+            self.emit.printout(self.emit.emitATTRIBUTE(ast.conName, ast.conType, True, False, v))
+        else:
+            frame = o['frame']
+            index = frame.getNewIndex()
+            cls = ClassType(ast.conType.name) if isinstance(ast.conType, AST.StructType) or isinstance(ast.conName, AST.InterfaceType) else ast.conType
+            o['env'][0].append(StaticCheck.Symbol(ast.conName, ast.conType, Index(index)))
+            self.emit.printout(self.emit.emitVAR(index, ast.conName, cls, frame.getStartLabel(), frame.getEndLabel(), frame))
+            if ast.iniExpr is not None:
+                init_j, init_ty = self.visit(ast.iniExpr, o)
+                self.emit.printout(init_j)
+                self.emit.printout(self.emit.emitWRITEVAR(ast.conName, cls, index, frame))
+        return o
 
     def visitParamDecl(self, ast, o):
-        # TODO:
+        # not needed anymore
         return o
 
     def visitFuncDecl(self, ast: AST.FuncDecl, o):
@@ -1327,7 +1385,7 @@ class CodeGenerator(BaseVisitor,Utils):
         for method in ast.methods:
             self.visit(method, o)
 
-        self.emitObjectInit(ast.name)
+        self.emit_init_clinit(ast.name)
         sub_emit.emitEPILOG()
 
         self.emit = old_emit
@@ -1477,15 +1535,25 @@ class CodeGenerator(BaseVisitor,Utils):
             j = self.emit.emitANDOP(frame)
         elif ast.op == "||":
             j = self.emit.emitOROP(frame)
-        elif ast.op == "!":
-            j = self.emit.emitPUSHICONST(1, frame) + self.emit.emitXOROP(frame)
         else:
             j = self.emit.emitREOP(ast.op, l_ty, frame)
 
         return l_j + r_j + j, l_ty
 
-    def visitUnaryOp(self, ast, param):
-        return None
+    def visitUnaryOp(self, ast: AST.UnaryOp, o):
+        if "frame" not in o:
+            r_j, r_ty = self.visit(ast.body, o)
+            return "", r_ty
+
+        frame: Frame = o["frame"]
+
+        o2 = o.copy()
+        r_j, r_ty = self.visit(ast.body, o2)
+        if ast.op == "-":
+            j = self.emit.emitNEGOP(r_ty, frame)
+        else:
+            j = self.emit.emitPUSHICONST(1, frame) + self.emit.emitXOROP(frame)
+        return r_j + j, r_ty
 
     def visitConvertIntToFloat(self, ast: ConvertIntToFloat, o):
         if "frame" not in o:

@@ -523,7 +523,7 @@ class StaticChecker(BaseVisitor):
                         isinstance(rhs, AST.FloatLiteral) or isinstance(rhs, AST.IntLiteral)):
                     return AST.FloatLiteral(float(lhs.value) + float(rhs.value))
                 elif isinstance(lhs, AST.StringLiteral) and isinstance(rhs, AST.StringLiteral):
-                    return AST.StringLiteral(f"{lhs.value[1:-1]}{rhs.value[1:-1]}")
+                    return AST.StringLiteral(f"\"{lhs.value[1:-1]}{rhs.value[1:-1]}\"")
                 else:
                     raise StaticError.TypeMismatch(ast)
             elif ast.op == "-":
