@@ -1,3 +1,8 @@
+"""
+ * @author nghia.ho310pf
+ * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
+ * @note https://www.youtube.com/watch?v=_YJCm_dUoHc
+"""
 import os
 import unittest
 import inspect
@@ -264,7 +269,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         i = """
             type Inner struct { val int }
             type Outer struct { val Inner }
-    
+
             func main() {
                 o := Outer{val: Inner{val: 42}}
                 putInt(o.val.val)
@@ -291,7 +296,7 @@ class CheckCodeGenSuite(unittest.TestCase):
         i = """
             type A struct { value int }
             func (a A) double() int { return a.value * 2 }
-    
+
             type B struct { a A }
             func main() {
                 b := B{a: A{value: 7}}
@@ -375,6 +380,141 @@ class CheckCodeGenSuite(unittest.TestCase):
             }
         """
         o = "7209"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_7(self):
+        i = """
+            func main() {
+                var a = [1]int{42}
+                putInt(a[0])
+            }
+        """
+        o = "42"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_8(self):
+        i = """
+            func main() {
+                var m = [2][2]int{{1, 2}, {3, 4}}
+                putInt(m[0][0])
+                putInt(m[0][1])
+                putInt(m[1][0])
+                putInt(m[1][1])
+            }
+        """
+        o = "1234"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_9(self):
+        i = """
+            func main() {
+                var a = [3]int{0, 1, 2}
+                var sum = 0
+                for var i = 0; i < 3; i := i + 1 {
+                    sum := sum + a[i]
+                }
+                putInt(sum)
+            }
+        """
+        o = "3"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_10(self):
+        i = """
+            func main() {
+                var m = [2][2]int{{10, 20}, {30, 40}}
+                var total = 0
+                for var i = 0; i < 2; i := i + 1 {
+                    for var j = 0; j < 2; j := j + 1 {
+                        total := total + m[i][j]
+                    }
+                }
+                putInt(total)
+            }
+        """
+        o = "100"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_11(self):
+        i = """
+            func main() {
+                var a [2]int
+                a[0] := 9
+                a[1] := 6
+                putInt(a[0] + a[1])
+            }
+        """
+        o = "15"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_12(self):
+        i = """
+            func main() {
+                var m = [1][2][3]int{{{1, 2, 3}, {4, 5, 6}}}
+                putInt(m[0][0][0])
+                putInt(m[0][1][2])
+            }
+        """
+        o = "16"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_13(self):
+        i = """
+            func main() {
+                var m = [2][2]int{{1, 2}, {3, 4}}
+                m[0][1] := 20
+                m[1][0] := 30
+                putInt(m[0][1])
+                putInt(m[1][0])
+            }
+        """
+        o = "2030"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_14(self):
+        i = """
+            func main() {
+                var arr = [2][2]int{{1, 2}, {3, 4}}
+                for var i = 0; i < 2; i := i + 1 {
+                    for var j = 0; j < 2; j := j + 1 {
+                        putInt(arr[i][j])
+                    }
+                }
+            }
+        """
+        o = "1234"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_15(self):
+        i = """
+            func main() {
+                var a = [2][2]int{{1, 2}, {3, 4}}
+                var sum = 0
+                for var i = 0; i < 2; i := i + 1 {
+                    sum := sum + a[i][i]
+                }
+                putInt(sum)
+            }
+        """
+        o = "5"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_16(self):
+        i = """
+            func main() {
+                var m = [1][2][3]int{{{1, 2, 3}, {4, 5, 6}}}
+                var total = 0
+                for var i = 0; i < 1; i := i + 1 {
+                    for var j = 0; j < 2; j := j + 1 {
+                        for var k = 0; k < 3; k := k + 1 {
+                            total := total + m[i][j][k]
+                        }
+                    }
+                }
+                putInt(total)
+            }
+        """
+        o = "21"
         self.assertTrue(TestCodeGen.test(i, o, n()))
 
     def test_while_loop_1(self):
@@ -647,13 +787,13 @@ class CheckCodeGenSuite(unittest.TestCase):
             type Printer interface {
                 print()
             }
-    
+
             type A struct {}
-    
+
             func (a A) print() {
                 putString("A")
             }
-    
+
             func main() {
                 var p Printer = A{}
                 p.print()
@@ -667,17 +807,17 @@ class CheckCodeGenSuite(unittest.TestCase):
             type Printer interface {
                 print()
             }
-    
+
             type B struct {}
-    
+
             func (b B) print() {
                 putString("B")
             }
-    
+
             func usePrinter(p Printer) {
                 p.print()
             }
-    
+
             func main() {
                 usePrinter(B{})
             }
@@ -690,22 +830,22 @@ class CheckCodeGenSuite(unittest.TestCase):
             type Printer interface {
                 print()
             }
-    
+
             type A struct {}
             type B struct {}
-    
+
             func (a A) print() {
                 putString("A")
             }
-    
+
             func (b B) print() {
                 putString("B")
             }
-    
+
             func main() {
                 var p Printer = A{}
                 p.print()
-                p = B{}
+                p := B{}
                 p.print()
             }
         """
@@ -717,17 +857,17 @@ class CheckCodeGenSuite(unittest.TestCase):
             type Printer interface {
                 print()
             }
-    
+
             type Verbose struct {}
-    
+
             func (v Verbose) print() {
                 putString("Verbose")
             }
-    
+
             func (v Verbose) debug() {
                 putString("Debug")
             }
-    
+
             func main() {
                 var p Printer = Verbose{}
                 p.print()
@@ -741,17 +881,17 @@ class CheckCodeGenSuite(unittest.TestCase):
             type Printer interface {
                 print()
             }
-    
+
             type A struct {}
             type B struct {}
-    
+
             func (a A) print() { putString("A") }
             func (b B) print() { putString("B") }
-    
+
             func doPrint(p Printer) {
                 p.print()
             }
-    
+
             func main() {
                 doPrint(A{})
                 doPrint(B{})
@@ -759,3 +899,507 @@ class CheckCodeGenSuite(unittest.TestCase):
         """
         o = "AB"
         self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_1(self):
+        i = """
+            func main() {
+                if (true) {
+                    putString("yes")
+                }
+            }
+        """
+        o = "yes"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_2(self):
+        i = """
+            func main() {
+                if (false) {
+                    putString("no")
+                } else {
+                    putString("yes")
+                }
+            }
+        """
+        o = "yes"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_3(self):
+        i = """
+            func main() {
+                var x = 10
+                if (x > 5) {
+                    putString("big")
+                } else {
+                    putString("small")
+                }
+            }
+        """
+        o = "big"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_4(self):
+        i = """
+            func main() {
+                var x = 3
+                if (x > 5) {
+                    putString("A")
+                } else if (x > 1) {
+                    putString("B")
+                } else {
+                    putString("C")
+                }
+            }
+        """
+        o = "B"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_5(self):
+        i = """
+            func main() {
+                var x = 0
+                if (x < 0) {
+                    putString("neg")
+                } else if (x == 0) {
+                    putString("zero")
+                } else {
+                    putString("pos")
+                }
+            }
+        """
+        o = "zero"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_6(self):
+        i = """
+            func main() {
+                var a = 3
+                var b = 4
+                if (a < b) {
+                    putString("yes")
+                }
+            }
+        """
+        o = "yes"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_7(self):
+        i = """
+            func main() {
+                var a = 3
+                var b = 3
+                if (a < b) {
+                    putString("A")
+                } else if (a == b) {
+                    putString("B")
+                } else {
+                    putString("C")
+                }
+            }
+        """
+        o = "B"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_8(self):
+        i = """
+            func main() {
+                var x = 2
+                var y = 4
+                if ((x + y) % 2 == 0) {
+                    putString("even")
+                } else {
+                    putString("odd")
+                }
+            }
+        """
+        o = "even"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_9(self):
+        i = """
+            func main() {
+                if (false) {
+                    putString("A")
+                } else if (false) {
+                    putString("B")
+                } else {
+                    putString("C")
+                }
+            }
+        """
+        o = "C"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_if_10(self):
+        i = """
+            func main() {
+                var x = 5
+                var y = 10
+                if (x > 0) {
+                    if (y > 5) {
+                        putString("yes")
+                    }
+                }
+            }
+        """
+        o = "yes"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_1(self):
+        i = """
+            func hello() {
+                putString("hello")
+            }
+            func main() {
+                hello()
+            }
+        """
+        o = "hello"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_2(self):
+        i = """
+            func greet() {
+                putString("hi")
+            }
+            func main() {
+                greet()
+                greet()
+            }
+        """
+        o = "hihi"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_3(self):
+        i = """
+            func printIntTwice(x int) {
+                putInt(x)
+                putInt(x)
+            }
+            func main() {
+                printIntTwice(7)
+            }
+        """
+        o = "77"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_4(self):
+        i = """
+            func add(a int, b int) int {
+                return a + b
+            }
+            func main() {
+                putInt(add(2, 3))
+            }
+        """
+        o = "5"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_5(self):
+        i = """
+            func square(x int) int {
+                return x * x
+            }
+            func main() {
+                var s = square(4)
+                putInt(s)
+            }
+        """
+        o = "16"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_6(self):
+        i = """
+            func mulAdd(a int, b int, c int) int {
+                return a * b + c
+            }
+            func main() {
+                putInt(mulAdd(2, 3, 4))
+            }
+        """
+        o = "10"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_7(self):
+        i = """
+            func echo(s string) string {
+                return s
+            }
+            func main() {
+                putString(echo("abc"))
+            }
+        """
+        o = "abc"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_8(self):
+        i = """
+            func max(a int, b int) int {
+                if (a > b) {
+                    return a
+                } else {
+                    return b
+                }
+            }
+            func main() {
+                putInt(max(3, 9))
+            }
+        """
+        o = "9"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_9(self):
+        i = """
+            func id(x int) int {
+                return x
+            }
+            func main() {
+                var a = id(42)
+                putInt(a)
+            }
+        """
+        o = "42"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_func_10(self):
+        i = """
+            func fib(n int) int {
+                if (n <= 1) {
+                    return n
+                } else {
+                    return fib(n - 1) + fib(n - 2)
+                }
+            }
+            func main() {
+                putInt(fib(7))
+            }
+        """
+        o = "13"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_1(self):
+        i = """
+            const N = 3
+            func main() {
+                var a [N]int
+                a[0] := 10
+                a[1] := 20
+                a[2] := 30
+                putInt(a[0] + a[1] + a[2])
+            }
+        """
+        o = "60"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_2(self):
+        i = """
+            const R = 2
+            const C = 3
+            func main() {
+                var m [R][C]int
+                m[0][0] := 1
+                m[0][1] := 2
+                m[0][2] := 3
+                m[1][0] := 4
+                m[1][1] := 5
+                m[1][2] := 6
+                putInt(m[0][1] + m[1][2])
+            }
+        """
+        o = "8"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_3(self):
+        i = """
+            const SIZE = 5
+            func main() {
+                var a [SIZE]int
+                for var i = 0; i < SIZE; i := i + 1 {
+                    a[i] := i
+                }
+                for var i = 0; i < SIZE; i := i + 1 {
+                    putInt(a[i])
+                }
+            }
+        """
+        o = "01234"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_4(self):
+        i = """
+            const X = 1
+            const Y = 2
+            const Z = 3
+            func main() {
+                var a [X][Y][Z]int
+                a[0][1][2] := 99
+                putInt(a[0][1][2])
+            }
+        """
+        o = "99"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_5(self):
+        i = """
+            const N = 2
+            func fill(a [N]int) {
+                a[0] := 5
+                a[1] := 6
+                putInt(a[0] + a[1])
+            }
+            func main() {
+                fill([2]int{0, 0})
+            }
+        """
+        o = "11"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_6(self):
+        i = """
+            const A = 1
+            const B = 2
+            const C = 2
+            func main() {
+                var arr = [A][B][C]int{{{1, 2}, {3, 4}}}
+                putInt(arr[0][0][0])
+                putInt(arr[0][1][1])
+            }
+        """
+        o = "14"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_7(self):
+        i = """
+            const N = 3
+            func main() {
+                var a = [N]int{1, 2, 3}
+                var sum = 0
+                for var i = 0; i < N; i := i + 1 {
+                    sum := sum + a[i]
+                }
+                putInt(sum)
+            }
+        """
+        o = "6"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_8(self):
+        i = """
+            const R = 2
+            const C = 2
+            func main() {
+                var m = [R][C]int{{1, 2}, {3, 4}}
+                for var i = 0; i < R; i := i + 1 {
+                    for var j = 0; j < C; j := j + 1 {
+                        putInt(m[i][j])
+                    }
+                }
+            }
+        """
+        o = "1234"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_9(self):
+        i = """
+            const L = 2
+            const M = 2
+            const N = 2
+            func main() {
+                var a [L][M][N]int
+                a[1][1][1] := 7
+                putInt(a[1][1][1])
+            }
+        """
+        o = "7"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_array_const_dim_10(self):
+        i = """
+            const S = 2
+            func main() {
+                var a = [S]int{3, 4}
+                putInt(a[0] * a[1])
+            }
+        """
+        o = "12"
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_vector_math_1(self):
+        i = """
+            type Point struct { x int; y int }
+            func (p Point) add(q Point) Point {
+                return Point{x: p.x + q.x, y: p.y + q.y}
+            }
+            func main() {
+                var p = Point{x: 2, y: 3}
+                var q = Point{x: 4, y: 5}
+                var r = p.add(q)
+                putInt(r.x + r.y)
+            }
+        """
+        o = "14"  # (2+4) + (3+5) = 14
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_vector_math_2(self):
+        i = """
+            type Point struct { x int; y int }
+            func (p Point) subtract(q Point) Point {
+                return Point{x: p.x - q.x, y: p.y - q.y}
+            }
+            func main() {
+                var p = Point{x: 6, y: 7}
+                var q = Point{x: 3, y: 4}
+                var r = p.subtract(q)
+                putInt(r.x + r.y)
+            }
+        """
+        o = "6"  # (6-3) + (7-4) = 6
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_vector_math_3(self):
+        i = """
+            type Point struct { x int; y int }
+            func (p Point) scale(s int) Point {
+                return Point{x: p.x * s, y: p.y * s}
+            }
+            func main() {
+                var p = Point{x: 3, y: 4}
+                var s = 2
+                var r = p.scale(s)
+                putInt(r.x + r.y)
+            }
+        """
+        o = "14"  # (3*2) + (4*2) = 14
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_vector_math_4(self):
+        i = """
+            type Point struct { x int; y int }
+            func (p Point) dot(q Point) int {
+                return p.x * q.x + p.y * q.y
+            }
+            func main() {
+                var p = Point{x: 1, y: 2}
+                var q = Point{x: 3, y: 4}
+                var r = p.dot(q)
+                putInt(r)
+            }
+        """
+        o = "11"  # (1*3) + (2*4) = 11
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
+    def test_vector_math_5(self):
+        i = """
+            type Point struct { x int; y int }
+            func (p Point) length() int {
+                return p.x * p.x + p.y * p.y
+            }
+            func main() {
+                var p = Point{x: 3, y: 4}
+                var r = p.length()
+                putInt(r)
+            }
+        """
+        o = "25"  # (3*3) + (4*4) = 25
+        self.assertTrue(TestCodeGen.test(i, o, n()))
+
