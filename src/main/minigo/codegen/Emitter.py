@@ -309,13 +309,21 @@ class Emitter():
         #lexeme: String
         #in_: Type
         #frame: Frame
-
-        typ = in_
-        list(map(lambda x: frame.pop(), typ.partype))
+        list(map(lambda x: frame.pop(), in_.partype))
         frame.pop()
-        if not type(typ) is AST.VoidType:
+        if not isinstance(in_, AST.VoidType):
             frame.push()
         return self.jvm.emitINVOKEVIRTUAL(lexeme, self.getJVMType(in_))
+
+    def emitINVOKEINTERFACE(self, lexeme, in_, frame):
+        #lexeme: String
+        #in_: Type
+        #frame: Frame
+        list(map(lambda x: frame.pop(), in_.partype))
+        frame.pop()
+        if not isinstance(in_, AST.VoidType):
+            frame.push()
+        return self.jvm.emitINVOKEINTERFACE(lexeme, self.getJVMType(in_), len(in_.partype) + 1)
 
     def emitSTRCONCAT(self, frame):
         frame.pop()
@@ -693,6 +701,9 @@ class Emitter():
         result.append(self.jvm.emitCLASS(("public abstract interface " if is_abstract else "public ") + name))
         result.append(self.jvm.emitSUPER("java/lang/Object" if parent == "" else parent))
         return ''.join(result)
+
+    def emitIMPLEMENTS(self, lexeme: str):
+        return self.jvm.emitIMPLEMENTS(lexeme)
 
     def emitLIMITSTACK(self, num):
         #num: Int

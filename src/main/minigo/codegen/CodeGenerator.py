@@ -234,7 +234,9 @@ class Simplifier(BaseVisitor):
 
         # Allow structs to be cast to interfaces.
         if isinstance(a_ty, AST.StructType) and isinstance(b_ty, AST.InterfaceType):
-            return a_expr # TODO
+            if b_ty not in a_ty.implements:
+                a_ty.implements.append(b_ty)
+            return a_expr
 
         if isinstance(a_ty, AST.ArrayType) and isinstance(b_ty, AST.ArrayType):
             return a_expr # TODO
@@ -915,6 +917,8 @@ class Simplifier(BaseVisitor):
                 return AST.BinaryOp(ast.op, lhs_expr, ConvertIntToFloat(rhs_expr)), AST.FloatType()
             if isinstance(lhs, AST.IntType) and  isinstance(rhs, AST.FloatType):
                 return AST.BinaryOp(ast.op, ConvertIntToFloat(lhs_expr), rhs_expr), AST.FloatType()
+            if isinstance(lhs, AST.FloatType) and  isinstance(rhs, AST.FloatType):
+                return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.FloatType()
             if isinstance(lhs, AST.StringType) and isinstance(rhs, AST.StringType):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.StringType()
         if ast.op in ["-", "*", "/"]:
@@ -924,6 +928,8 @@ class Simplifier(BaseVisitor):
                 return AST.BinaryOp(ast.op, lhs_expr, ConvertIntToFloat(rhs_expr)), AST.FloatType()
             if isinstance(lhs, AST.IntType) and  isinstance(rhs, AST.FloatType):
                 return AST.BinaryOp(ast.op, ConvertIntToFloat(lhs_expr), rhs_expr), AST.FloatType()
+            if isinstance(lhs, AST.FloatType) and  isinstance(rhs, AST.FloatType):
+                return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.FloatType()
         if ast.op == "%":
             if isinstance(lhs, AST.IntType) and isinstance(rhs, AST.IntType):
                 return AST.BinaryOp(ast.op, lhs_expr, rhs_expr), AST.IntType()
@@ -952,14 +958,22 @@ class Simplifier(BaseVisitor):
         raise BadCoverage()
 
     def visitFuncCall(self, ast: AST.FuncCall, given_scope: List[CtxObject]):
-        args = [self.visit(it, given_scope)[0] for it in ast.args]
+        args: List[Tuple[AST.Expr, AST.Type]] = [self.visit(it, given_scope) for it in ast.args]
         for sym in filter(lambda x: isinstance(x, Sym), reversed(given_scope)):
             if sym.name == ast.funName:
                 if isinstance(sym, FunctionSym):
                     if isinstance(sym.original_ast, AST.FuncDecl):
-                        return ConcreteFuncCall(sym.original_ast, args), sym.original_ast.retType
+                        casted_args = [
+                            self.maybe_wrap_cast_a_to_b(source_type, target_parameter.parType, source_expr)
+                            for (source_expr, source_type), target_parameter in zip(args, sym.original_ast.params)
+                        ]
+                        return ConcreteFuncCall(sym.original_ast, casted_args), sym.original_ast.retType
                     parent_class, param_types, ret_type = sym.original_ast
-                    return ConcreteFuncCall((ast.funName, parent_class, param_types, ret_type), args), ret_type
+                    casted_args = [
+                        self.maybe_wrap_cast_a_to_b(source_type, target_type, source_expr)
+                        for (source_expr, source_type), target_type in zip(args, param_types)
+                    ]
+                    return ConcreteFuncCall((ast.funName, parent_class, param_types, ret_type), casted_args), ret_type
                 else:
                     raise BadCoverage()
         raise BadCoverage()
@@ -967,12 +981,20 @@ class Simplifier(BaseVisitor):
     def visitMethCall(self, ast: AST.MethCall, given_scope: List[CtxObject]):
         receiver_expr, receiver_type = self.visit(ast.receiver, given_scope) # No need to append IsExpressionVisit.
         ast.receiver = receiver_expr
-        ast.args = [self.visit(it, given_scope)[0] for it in ast.args]
+        args: List[Tuple[AST.Expr, AST.Type]] = [self.visit(it, given_scope) for it in ast.args]
         if isinstance(receiver_type, AST.StructType):
             method: AST.MethodDecl = next(filter(lambda x: x.fun.name == ast.metName, receiver_type.methods))
+            ast.args = [
+                self.maybe_wrap_cast_a_to_b(source_type, target_parameter.parType, source_expr)
+                for (source_expr, source_type), target_parameter in zip(args, method.fun.params)
+            ]
             return ast, method.fun.retType
         if isinstance(receiver_type, AST.InterfaceType):
             method: AST.Prototype = next(filter(lambda x: x.name == ast.metName, receiver_type.methods))
+            ast.args = [
+                self.maybe_wrap_cast_a_to_b(source_type, target_type, source_expr)
+                for (source_expr, source_type), target_type in zip(args, method.params)
+            ]
             return ast, method.retType
         raise BadCoverage()
 
@@ -1279,8 +1301,9 @@ class CodeGenerator(BaseVisitor,Utils):
         frame.exitScope()
         return o
 
-    def visitPrototype(self, ast, param):
-        return None
+    def visitPrototype(self, ast: AST.Prototype, o):
+        self.emit.printout(self.emit.emitMETHOD(f"abstract {ast.name}", StaticCheck.MType(ast.params, ast.retType), False, None))
+        self.emit.printout(self.emit.jvm.emitENDMETHOD())
 
     def visitIntType(self, ast, param):
         return None
@@ -1307,6 +1330,10 @@ class CodeGenerator(BaseVisitor,Utils):
 
         # Class prologue
         sub_emit.printout(sub_emit.emitPROLOG(ast.name, "java.lang.Object", False))
+
+        # Implements?
+        for impl in ast.implements:
+            sub_emit.printout(sub_emit.emitIMPLEMENTS(impl.name))
 
         # Make fields
         for field_name, field_type in ast.elements:
@@ -1354,8 +1381,19 @@ class CodeGenerator(BaseVisitor,Utils):
 
         return o
 
-    def visitInterfaceType(self, ast, param):
-        return None
+    def visitInterfaceType(self, ast: AST.InterfaceType, o):
+        sub_emit = Emitter(self.path + "/" + ast.name + ".j")
+        old_emit = self.emit
+        self.emit = sub_emit
+
+        sub_emit.printout(sub_emit.emitPROLOG(ast.name, "java.lang.Object", True))
+        for method in ast.methods:
+            self.visit(method, o)
+        sub_emit.emitEPILOG()
+
+        self.emit = old_emit
+
+        return o
 
     def visitBlock(self, ast, o):
         env = o.copy()
@@ -1389,9 +1427,10 @@ class CodeGenerator(BaseVisitor,Utils):
         rhs_j, rhs_ty = self.visit(ast.rhs, o)
 
         if isinstance(lhs_ast, AST.Id):
-            sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]), None) # reverse the damn thing!
+            name = lhs_ast.name
+            sym: StaticCheck.Symbol = next(filter(lambda x: x.name == name, [j for i in o['env'] for j in i[::-1]]), None) # reverse the damn thing!
             val = sym.value
-            lhs_j = self.emit.emitWRITEVAR(lhs_ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitPUTSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
+            lhs_j = self.emit.emitWRITEVAR(name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitPUTSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
         elif isinstance(lhs_ast, AST.FieldAccess):
             if not isinstance(prep_ty, AST.StructType):
                 raise BadCoverage()
@@ -1584,18 +1623,22 @@ class CodeGenerator(BaseVisitor,Utils):
 
     def visitMethCall(self, ast: AST.MethCall, o):
         l_j, l_ty = self.visit(ast.receiver, o)
-        if not (isinstance(l_ty, AST.StructType) or isinstance(l_ty, AST.InterfaceType)):
-            raise BadCoverage()
-        if not isinstance(l_ty, AST.StructType):
-            raise BadCoverage() # for now
 
         frame: Frame = o["frame"]
         args = [self.visit(x, o)[0] for x in ast.args]
-
-        method: AST.MethodDecl = next(filter(lambda x: x.fun.name == ast.metName, l_ty.methods))
-        mtype = StaticCheck.MType([param.parType for param in method.fun.params], method.fun.retType)
-        j = self.emit.emitINVOKEVIRTUAL(f"{l_ty.name}/{ast.metName}", mtype, frame)
-        return l_j + ''.join(args) + j, method.fun.retType
+        if isinstance(l_ty, AST.StructType):
+            method: AST.MethodDecl = next(filter(lambda x: x.fun.name == ast.metName, l_ty.methods))
+            mtype = StaticCheck.MType([param.parType for param in method.fun.params], method.fun.retType)
+            j = self.emit.emitINVOKEVIRTUAL(f"{l_ty.name}/{ast.metName}", mtype, frame)
+            ret_type = method.fun.retType
+        elif isinstance(l_ty, AST.InterfaceType):
+            prototype: AST.Prototype = next(filter(lambda x: x.name == ast.metName, l_ty.methods))
+            mtype = StaticCheck.MType(prototype.params, prototype.retType)
+            j = self.emit.emitINVOKEINTERFACE(f"{l_ty.name}/{ast.metName}", mtype, frame)
+            ret_type = prototype.retType
+        else:
+            raise BadCoverage()
+        return l_j + ''.join(args) + j, ret_type
 
     def visitId(self, ast, o):
         sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]), None) # reverse the damn thing!
