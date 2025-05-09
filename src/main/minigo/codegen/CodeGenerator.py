@@ -1203,7 +1203,8 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitProgram(self, ast, c):
         env = {'env': [c]}
         self.emit.printout(self.emit.emitPROLOG(self.className, "java.lang.Object", False))
-        env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: not (isinstance(x, AST.StructType) or isinstance(x, AST.InterfaceType)), ast.decl), env)
+        env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: isinstance(x, AST.VarDecl) or isinstance(x, AST.ConstDecl), ast.decl), env)
+        env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: not (isinstance(x, AST.StructType) or isinstance(x, AST.InterfaceType) or isinstance(x, AST.VarDecl) or isinstance(x, AST.ConstDecl)), ast.decl), env)
         self.emit_init_clinit(None, list(filter(lambda x: isinstance(x, AST.VarDecl) or isinstance(x, AST.ConstDecl), ast.decl)), env)
         env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: isinstance(x, AST.StructType) or isinstance(x, AST.InterfaceType), ast.decl), env)
         self.emit.printout(self.emit.emitEPILOG())
