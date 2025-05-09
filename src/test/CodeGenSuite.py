@@ -608,7 +608,7 @@ class CheckCodeGenSuite(unittest.TestCase):
     def test_cstyle_loop_8(self):
         i = """
             func main() {
-                for var i = 1; i <= 5; i := i + 1 {
+                for var i = 1; i <= 6; i := i + 1 {
                     if (i % 2 == 0) {
                         putInt(i)
                     }
