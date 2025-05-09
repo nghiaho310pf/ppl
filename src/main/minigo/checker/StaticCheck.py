@@ -1032,9 +1032,10 @@ class StaticChecker(BaseVisitor):
                 my_scope.append(sym)
             elif isinstance(statement, AST.Expr):
                 expr_type = self.visit(statement, my_scope + [IsExpressionVisit()])
-                # I guess prof. Phung doesn't want any code to discard any values.
-                if not isinstance(expr_type, AST.VoidType):
-                    raise StaticError.TypeMismatch(statement)
+                # The check below is disabled since this StaticCheck class is now just being used to make sure our codegen can handle the input
+                # # I guess prof. Phung doesn't want any code to discard any values.
+                # if not isinstance(expr_type, AST.VoidType):
+                #     raise StaticError.TypeMismatch(statement)
             elif isinstance(statement, AST.Assign) and isinstance(statement.lhs, AST.Id):
                 lhs: AST.Id = statement.lhs
                 # Is the name not declared? If so, turn it into a variable declaration.
@@ -1281,7 +1282,7 @@ class StaticChecker(BaseVisitor):
 
                     for i, arg in enumerate(ast.args):
                         arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
-                        if not self.hard_compare_types(arg_type, sym.resolved_types.parameter_types[i]):
+                        if not self.can_cast_a_to_b(arg_type, sym.resolved_types.parameter_types[i]):
                             raise StaticError.TypeMismatch(ast)
 
                     return sym.resolved_types.return_type
@@ -1307,7 +1308,7 @@ class StaticChecker(BaseVisitor):
 
                 for i, arg in enumerate(ast.args):
                     arg_type = self.visit(arg, given_scope) # No need to append IsExpressionVisit.
-                    if not self.hard_compare_types(arg_type, resolved_method_types.parameter_types[i]):
+                    if not self.can_cast_a_to_b(arg_type, resolved_method_types.parameter_types[i]):
                         raise StaticError.TypeMismatch(ast)
                 return resolved_method_types.return_type
         raise StaticError.Undeclared(StaticError.Type(), receiver_type.name)
