@@ -187,7 +187,7 @@ class TestCodeGen():
         else:
             asttree = input
 
-        jasmin_output_path = f"./test/solutions/{num}"
+        jasmin_output_path = f"./test/results/{num}"
         os.makedirs(jasmin_output_path, exist_ok=True)
 
         output_path = os.path.join(jasmin_output_path, "out.txt")
