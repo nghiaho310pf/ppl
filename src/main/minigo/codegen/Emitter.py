@@ -1,4 +1,3 @@
-import CodeGenerator
 import StaticCheck
 import AST
 from MachineCode import JasminCode
@@ -21,8 +20,6 @@ class Emitter():
             return "Ljava/lang/String;"
         if isinstance(inType, AST.VoidType):
             return "V"
-        if isinstance(inType, CodeGenerator.SimplifierNilType):
-            return "Ljava/lang/Object;"
 
         if isinstance(inType, AST.ArrayType):
             return "[" * len(inType.dimens) + self.getJVMType(inType.eleType)

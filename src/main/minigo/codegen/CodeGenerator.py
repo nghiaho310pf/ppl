@@ -633,7 +633,10 @@ class Simplifier(BaseVisitor):
         sym.being_checked = True
         simplified = self.comptime_evaluate(sym.original_ast.iniExpr, index_limit)
         sym.original_ast.iniExpr = simplified
-        sym.original_ast.conType = self.type_of_literal(simplified)
+        if sym.original_ast.conType is None:
+            sym.original_ast.conType = self.type_of_literal(simplified)
+        else:
+            sym.original_ast.conType = self.global_resolve_typename(sym.original_ast.conType, index_limit)
         # Explicit type is ignored; we already went over it in static checking
         sym.being_checked = False
         sym.done_resolving = True
