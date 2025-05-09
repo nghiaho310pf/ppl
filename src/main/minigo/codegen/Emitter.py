@@ -1,8 +1,6 @@
-import Utils
+import CodeGenerator
 import StaticCheck
-import StaticError
 import AST
-import CodeGenerator as cgen
 from MachineCode import JasminCode
 import CodeGenError
 
@@ -23,13 +21,20 @@ class Emitter():
             return "Ljava/lang/String;"
         if isinstance(inType, AST.VoidType):
             return "V"
+        if isinstance(inType, CodeGenerator.SimplifierNilType):
+            return "Ljava/lang/Object;"
 
         if isinstance(inType, AST.ArrayType):
             return "[" * len(inType.dimens) + self.getJVMType(inType.eleType)
         if isinstance(inType, StaticCheck.MType):
             return "(" + "".join(list(map(lambda x: self.getJVMType(x), inType.partype))) + ")" + self.getJVMType(inType.rettype)
-        if isinstance(inType, cgen.ClassType) or isinstance(inType, AST.Id):
+        if isinstance(inType, AST.StructType):
             return "L" + inType.name + ";"
+        if isinstance(inType, AST.InterfaceType):
+            return "L" + inType.name + ";"
+
+        if isinstance(inType, str):
+            return "L" + inType + ";"
 
         if inType is None:
             return "Ljava/lang/Object;"
@@ -119,7 +124,7 @@ class Emitter():
             return self.jvm.emitIALOAD()
         elif isinstance(in_, AST.FloatType):
             return self.jvm.emitFALOAD()
-        elif isinstance(in_, (AST.ArrayType, cgen.ClassType, AST.StringType)):
+        elif isinstance(in_, AST.ArrayType) or isinstance(in_, AST.StructType) or isinstance(in_, AST.InterfaceType) or isinstance(in_, AST.StringType):
             return self.jvm.emitAALOAD()
         else:
             raise CodeGenError.IllegalOperandException(str(in_))
@@ -133,7 +138,7 @@ class Emitter():
             return self.jvm.emitIASTORE()
         elif isinstance(in_, AST.FloatType):
             return self.jvm.emitFASTORE()
-        elif isinstance(in_, (AST.ArrayType, cgen.ClassType, AST.StringType)):
+        elif isinstance(in_, AST.ArrayType) or isinstance(in_, AST.StructType) or isinstance(in_, AST.InterfaceType) or isinstance(in_, AST.StringType):
             return self.jvm.emitAASTORE()
         else:
             raise CodeGenError.IllegalOperandException(str(in_))
@@ -167,7 +172,7 @@ class Emitter():
             return self.jvm.emitILOAD(index)
         if isinstance(inType, AST.FloatType):
             return self.jvm.emitFLOAD(index)
-        if isinstance(inType, AST.ArrayType) or isinstance(inType, cgen.ClassType) or isinstance(inType, AST.StringType):
+        if isinstance(inType, AST.ArrayType) or isinstance(inType, AST.StructType) or isinstance(inType, AST.InterfaceType) or isinstance(inType, AST.StringType) or isinstance(inType, str):
             return self.jvm.emitALOAD(index)
         raise CodeGenError.IllegalOperandException(name)
 
@@ -200,7 +205,7 @@ class Emitter():
             return self.jvm.emitISTORE(index)
         if isinstance(inType, AST.FloatType):
             return self.jvm.emitFSTORE(index)
-        elif isinstance(inType, AST.ArrayType) or isinstance(inType, cgen.ClassType) or isinstance(inType, AST.StringType):
+        elif isinstance(inType, AST.ArrayType) or isinstance(inType, AST.StructType) or isinstance(inType, AST.InterfaceType) or isinstance(inType, AST.StringType):
             return self.jvm.emitASTORE(index)
         else:
             raise CodeGenError.IllegalOperandException(name)
@@ -648,7 +653,7 @@ class Emitter():
         if isinstance(in_, AST.IntType) or isinstance(in_, AST.BoolType):
             frame.pop()
             return self.jvm.emitIRETURN()
-        if isinstance(in_, AST.ArrayType) or isinstance(in_, cgen.ClassType) or isinstance(in_, AST.StringType):
+        if isinstance(in_, AST.ArrayType) or isinstance(in_, AST.StructType) or isinstance(in_, AST.InterfaceType) or isinstance(in_, AST.StringType):
             frame.pop()
             return self.jvm.emitARETURN()
         if isinstance(in_, AST.FloatType):
