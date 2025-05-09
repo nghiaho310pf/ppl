@@ -351,6 +351,15 @@ class Simplifier(BaseVisitor):
             return ConcreteStructLiteral(typename, [])
         return AST.NilLiteral()
 
+    def make_unreachable_value(self, typename: AST.Type):
+        if isinstance(typename, AST.IntType):
+            return AST.IntLiteral(0)
+        elif isinstance(typename, AST.FloatType):
+            return AST.FloatLiteral(0.0)
+        elif isinstance(typename, AST.BoolType):
+            return AST.BooleanLiteral(False)
+        return AST.NilLiteral()
+
     # Unified from global_comptime_evaluate and local_comptime_evaluate.
     # For global consts:
     #   - pass an int as a global scope object index limit.
@@ -753,6 +762,8 @@ class Simplifier(BaseVisitor):
         my_scope = given_scope.copy()
         for i, param in enumerate(ast.params):
             my_scope.append(FnParamSym(param.parName, ast.params[i].parType))
+        if not isinstance(ast.retType, AST.VoidType):
+            ast.body.member.append(AST.Return(self.make_unreachable_value(ast.retType)))
         ast.body = self.visit(ast.body, my_scope)
 
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[CtxObject]):
@@ -760,6 +771,8 @@ class Simplifier(BaseVisitor):
         my_scope.append(FnParamSym(ast.receiver, ast.recType))
         for i, param in enumerate(ast.fun.params):
             my_scope.append(FnParamSym(param.parName, param.parType))
+        if not isinstance(ast.fun.retType, AST.VoidType):
+            ast.fun.body.member.append(AST.Return(self.make_unreachable_value(ast.fun.retType)))
         ast.fun.body = self.visit(ast.fun.body, my_scope)
 
     def visitPrototype(self, ast, param):
