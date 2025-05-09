@@ -1460,17 +1460,25 @@ class CodeGenerator(BaseVisitor, Utils):
         frame: Frame = o["frame"]
         
         cond_j, cond_ty = self.visit(ast.expr, o)
-        l1 = frame.getNewLabel()
-        l2 = frame.getNewLabel()
 
-        self.emit.printout(cond_j)
-        self.emit.printout(self.emit.emitIFFALSE(l1, frame))
-        then_j = self.visit(ast.thenStmt, o)
-        self.emit.printout(self.emit.emitGOTO(l2, frame))
-        self.emit.printout(self.emit.emitLABEL(l1, frame))
-        if ast.elseStmt is not None:
-            else_j = self.visit(ast.elseStmt, o)
-        self.emit.printout(self.emit.emitLABEL(l2, frame))
+        if ast.elseStmt is None:
+            l1 = frame.getNewLabel()
+            self.emit.printout(cond_j)
+            self.emit.printout(self.emit.emitIFFALSE(l1, frame))
+            self.visit(ast.thenStmt, o)
+            self.emit.printout(self.emit.emitLABEL(l1, frame))
+        else:
+            l1 = frame.getNewLabel()
+            l2 = frame.getNewLabel()
+
+            self.emit.printout(cond_j)
+            self.emit.printout(self.emit.emitIFFALSE(l1, frame))
+            self.visit(ast.thenStmt, o)
+            self.emit.printout(self.emit.emitGOTO(l2, frame))
+            self.emit.printout(self.emit.emitLABEL(l1, frame))
+            self.visit(ast.elseStmt, o)
+            self.emit.printout(self.emit.emitLABEL(l2, frame))
+
         return o
 
     def visitForBasic(self, ast: AST.ForBasic, o):
