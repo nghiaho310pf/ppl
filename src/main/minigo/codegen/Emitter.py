@@ -113,29 +113,27 @@ class Emitter():
         return self.jvm.emitNEW(lexeme)
 
     def emitALOAD(self, in_, frame):
-        #in_: Type
-        #frame: Frame
-        #..., arrayref, index, value -> ...
-        
-        frame.pop()
-        if type(in_) is AST.IntType:
+        # ..., arrayref, index -> ..., value
+        frame.pop()  # index
+        if isinstance(in_, AST.IntType):
             return self.jvm.emitIALOAD()
-        elif type(in_) is AST.ArrayType or type(in_) is cgen.ClassType or type(in_) is AST.StringType:
+        elif isinstance(in_, AST.FloatType):
+            return self.jvm.emitFALOAD()
+        elif isinstance(in_, (AST.ArrayType, cgen.ClassType, AST.StringType)):
             return self.jvm.emitAALOAD()
         else:
             raise CodeGenError.IllegalOperandException(str(in_))
 
     def emitASTORE(self, in_, frame):
-        #in_: Type
-        #frame: Frame
-        #..., arrayref, index, value -> ...
-        
-        frame.pop()
-        frame.pop()
-        frame.pop()
-        if type(in_) is AST.IntType:
+        # ..., arrayref, index, value -> ...
+        frame.pop()  # value
+        frame.pop()  # index
+        frame.pop()  # arrayref
+        if isinstance(in_, AST.IntType):
             return self.jvm.emitIASTORE()
-        elif type(in_) is AST.ArrayType or type(in_) is cgen.ClassType or type(in_) is AST.StringType:
+        elif isinstance(in_, AST.FloatType):
+            return self.jvm.emitFASTORE()
+        elif isinstance(in_, (AST.ArrayType, cgen.ClassType, AST.StringType)):
             return self.jvm.emitAASTORE()
         else:
             raise CodeGenError.IllegalOperandException(str(in_))
@@ -200,6 +198,8 @@ class Emitter():
 
         if isinstance(inType, AST.IntType) or isinstance(inType, AST.BoolType):
             return self.jvm.emitISTORE(index)
+        if isinstance(inType, AST.FloatType):
+            return self.jvm.emitFSTORE(index)
         elif isinstance(inType, AST.ArrayType) or isinstance(inType, cgen.ClassType) or isinstance(inType, AST.StringType):
             return self.jvm.emitASTORE(index)
         else:
