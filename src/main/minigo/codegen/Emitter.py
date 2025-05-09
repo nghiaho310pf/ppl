@@ -36,9 +36,9 @@ class Emitter():
         if inType is None:
             return "Ljava/lang/Object;"
 
-        return str(type(inType))
+        raise CodeGenError.IllegalOperandException(inType)
 
-    def getFullType(inType):
+    def getFullType(self, inType):
         if isinstance(inType, AST.IntType):
             return "int"
         if isinstance(inType, AST.FloatType):
@@ -49,6 +49,36 @@ class Emitter():
             return "java/lang/String"
         if isinstance(inType, AST.VoidType):
             return "void"
+        if isinstance(inType, AST.StructType) or isinstance(inType, AST.InterfaceType):
+            return inType.name
+        if isinstance(inType, AST.ArrayType):
+            return "[" * len(inType.dimens) + self.getFullType(inType.eleType)
+        raise CodeGenError.IllegalOperandException(inType)
+
+    def getNEWARRAYType(self, inType):
+        if isinstance(inType, AST.IntType):
+            return "int"
+        if isinstance(inType, AST.FloatType):
+            return "float"
+        if isinstance(inType, AST.BoolType):
+            return "boolean"
+        raise CodeGenError.IllegalOperandException(inType)
+
+    def getANEWARRAYType(self, inType):
+        if isinstance(inType, AST.IntType):
+            return "I"
+        if isinstance(inType, AST.FloatType):
+            return "F"
+        if isinstance(inType, AST.BoolType):
+            return "Z"
+        if isinstance(inType, AST.StringType):
+            return "java/lang/String"
+        if isinstance(inType, AST.VoidType):
+            return "V"
+        if isinstance(inType, AST.StructType) or isinstance(inType, AST.InterfaceType):
+            return inType.name
+        if isinstance(inType, AST.ArrayType):
+            return "[" * len(inType.dimens) + self.getJVMType(inType.eleType)
 
     def emitPUSHICONST(self, in_, frame):
         #in: Int or Sring
@@ -114,6 +144,18 @@ class Emitter():
         frame.push()
         return self.jvm.emitNEW(lexeme)
 
+    def emitNEWARRAY(self, in_, frame):
+        frame.pop()
+        frame.push()
+        if isinstance(in_, AST.IntType) or isinstance(in_, AST.FloatType) or isinstance(in_, AST.BoolType):
+            return self.jvm.emitNEWARRAY(self.getNEWARRAYType(in_))
+        elif isinstance(in_, AST.StructType) or isinstance(in_, AST.InterfaceType) or isinstance(in_, AST.StringType) or isinstance(in_, AST.ArrayType):
+            z = self.getANEWARRAYType(in_)
+
+            return self.jvm.emitANEWARRAY(z)
+        else:
+            raise CodeGenError.IllegalOperandException(str(in_))
+
     def emitALOAD(self, in_, frame):
         # ..., arrayref, index -> ..., value
         frame.pop()  # index
@@ -121,6 +163,8 @@ class Emitter():
             return self.jvm.emitIALOAD()
         elif isinstance(in_, AST.FloatType):
             return self.jvm.emitFALOAD()
+        elif isinstance(in_, AST.BoolType):
+            return self.jvm.emitBALOAD()
         elif isinstance(in_, AST.ArrayType) or isinstance(in_, AST.StructType) or isinstance(in_, AST.InterfaceType) or isinstance(in_, AST.StringType):
             return self.jvm.emitAALOAD()
         else:
@@ -135,6 +179,8 @@ class Emitter():
             return self.jvm.emitIASTORE()
         elif isinstance(in_, AST.FloatType):
             return self.jvm.emitFASTORE()
+        elif isinstance(in_, AST.BoolType):
+            return self.jvm.emitBASTORE()
         elif isinstance(in_, AST.ArrayType) or isinstance(in_, AST.StructType) or isinstance(in_, AST.InterfaceType) or isinstance(in_, AST.StringType):
             return self.jvm.emitAASTORE()
         else:

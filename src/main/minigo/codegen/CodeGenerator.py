@@ -1051,7 +1051,7 @@ class Simplifier(BaseVisitor):
     def visitArrayLiteral(self, ast: AST.ArrayLiteral, given_scope: List[CtxObject]):
         dimensions = [self.comptime_evaluate(it, given_scope) for it in ast.dimens]
         ele_type = self.visit(ast.eleType, given_scope + [SimplifierIsTypenameVisit()])
-        return AST.ArrayLiteral(dimensions, ast.eleType, self.simplify_nested_list(ast, ast.value, ele_type, dimensions, given_scope)), AST.ArrayType(dimensions, ele_type)
+        return AST.ArrayLiteral(dimensions, ele_type, self.simplify_nested_list(ast, ast.value, ele_type, dimensions, given_scope)), AST.ArrayType(dimensions, ele_type)
 
     def visitStructLiteral(self, ast: AST.StructLiteral, given_scope: List[CtxObject]):
         # Find the struct name.
@@ -1421,7 +1421,10 @@ class CodeGenerator(BaseVisitor,Utils):
         elif isinstance(lhs_ast, AST.FieldAccess):
             prep_j, prep_ty = self.visit(lhs_ast.receiver, o)
         elif isinstance(lhs_ast, AST.ArrayCell):
-            prep_j, prep_ty = self.visit(lhs_ast.arr, o)
+            prep_expr = AST.ArrayCell(lhs_ast.arr, lhs_ast.idx[:-1]) if len(lhs_ast.idx) > 1 else lhs_ast.arr
+            prep_j, prep_ty = self.visit(prep_expr, o)
+            last_indexing_j, last_indexing_ty = self.visit(lhs_ast.idx[-1], o)
+            prep_j += last_indexing_j
         else:
             raise BadCoverage()
 
@@ -1440,11 +1443,10 @@ class CodeGenerator(BaseVisitor,Utils):
             field_type = next(filter(lambda x: x[0] == field_name, prep_ty.elements))[1]
             lhs_j = self.emit.emitPUTFIELD(f"{prep_ty.name}/{lhs_ast.field}", field_type, frame)
         elif isinstance(lhs_ast, AST.ArrayCell):
-            if not isinstance(prep_ty, AST.StructType):
+            if not isinstance(prep_ty, AST.ArrayType):
                 raise BadCoverage()
-            idx_j, idx_ty = self.visit(lhs_ast.idx, o)
-            lhs_j = None
-            raise BadCoverage()
+            prep_ty = AST.ArrayType(prep_ty.dimens[1:], prep_ty.eleType) if len(prep_ty.dimens) > 1 else prep_ty.eleType
+            lhs_j = self.emit.emitASTORE(prep_ty, frame)
         else:
             raise BadCoverage()
 
@@ -1648,8 +1650,18 @@ class CodeGenerator(BaseVisitor,Utils):
         j = self.emit.emitREADVAR(ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitGETSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
         return j, sym.mtype
 
-    def visitArrayCell(self, ast, param):
-        return None
+    def visitArrayCell(self, ast: AST.ArrayCell, o):
+        l_j, l_ty = self.visit(ast.arr, o)
+        if not isinstance(l_ty, AST.ArrayType):
+            raise BadCoverage()
+        frame: Frame = o["frame"]
+        q = [l_j]
+        for idx in ast.idx:
+            r_j, r_ty = self.visit(idx, o)
+            l_ty = AST.ArrayType(l_ty.dimens[1:], l_ty.eleType) if len(l_ty.dimens) > 1 else l_ty.eleType
+            q.append(r_j)
+            q.append(self.emit.emitALOAD(l_ty, frame))
+        return ''.join(q), l_ty
 
     def visitFieldAccess(self, ast: AST.FieldAccess, o):
         l_j, l_ty = self.visit(ast.receiver, o)
@@ -1675,7 +1687,7 @@ class CodeGenerator(BaseVisitor,Utils):
         if "frame" not in o:
             return "", AST.BoolType()
         frame: Frame = o["frame"]
-        return self.emit.emitPUSHICONST(1 if ast.value else 0, frame), AST.FloatType()
+        return self.emit.emitPUSHICONST(1 if ast.value else 0, frame), AST.BoolType()
 
     def visitStringLiteral(self, ast, o):
         if "frame" not in o:
@@ -1683,8 +1695,28 @@ class CodeGenerator(BaseVisitor,Utils):
         frame: Frame = o["frame"]
         return self.emit.emitPUSHCONST(ast.value, AST.StringType(), frame), AST.StringType()
 
-    def visitArrayLiteral(self, ast, param):
-        return None
+    def visitArrayLiteral(self, ast: AST.ArrayLiteral, o):
+        frame: Frame = o["frame"]
+        q = ""
+        dim = ast.dimens[0]
+        if not isinstance(dim, AST.IntLiteral):
+            raise BadCoverage()
+
+        subtype = AST.ArrayType(ast.dimens[1:], ast.eleType) if len(ast.dimens) > 1 else ast.eleType
+        q += self.emit.emitPUSHICONST(dim.value, frame) + self.emit.emitNEWARRAY(subtype, frame)
+        for i, expr in enumerate(ast.value):
+            dup_j = self.emit.emitDUP(frame)
+            idx_j = self.emit.emitPUSHICONST(i, frame)
+            if isinstance(expr, List):
+                fake_ast = AST.ArrayLiteral(ast.dimens[1:], ast.eleType, expr)
+                val_j, val_ty = self.visit(fake_ast, o)
+            else:
+                val_j, val_ty = self.visit(expr, o)
+                val_ty = ast.eleType # prevent nils
+            store_j = self.emit.emitASTORE(val_ty, frame)
+            q += ''.join([dup_j, idx_j, val_j, store_j])
+
+        return q, AST.ArrayType(ast.dimens, ast.eleType)
 
     def visitStructLiteral(self, ast, param):
         raise BadCoverage()
