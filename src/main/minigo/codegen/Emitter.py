@@ -108,6 +108,10 @@ class Emitter():
 
     ##############################################################
 
+    def emitNEW(self, lexeme, frame):
+        frame.push()
+        return self.jvm.emitNEW(lexeme)
+
     def emitALOAD(self, in_, frame):
         #in_: Type
         #frame: Frame
@@ -526,12 +530,14 @@ class Emitter():
         result.append(self.jvm.emitGOTO(trueLabel))
         return ''.join(result)
 
+    def emitINSTANCEFIELD(self, lexeme, typ, isFinal, value):
+        return self.jvm.emitINSTANCEFIELD(lexeme, self.getJVMType(typ), isFinal, value)
+
     '''   generate the method directive for a function.
     *   @param lexeme the qualified name of the method(i.e., class-name/method-name).
     *   @param in the type descriptor of the method.
     *   @param isStatic <code>true</code> if the method is static; <code>false</code> otherwise.
     '''
-
     def emitMETHOD(self, lexeme, in_, isStatic, frame):
         #lexeme: String
         #in_: Type
@@ -683,7 +689,7 @@ class Emitter():
         result = list()
         result.append(self.jvm.emitSOURCE(name + ".java"))
         result.append(self.jvm.emitCLASS(("public abstract interface " if is_abstract else "public ") + name))
-        result.append(self.jvm.emitSUPER("java/land/Object" if parent == "" else parent))
+        result.append(self.jvm.emitSUPER("java/lang/Object" if parent == "" else parent))
         return ''.join(result)
 
     def emitLIMITSTACK(self, num):

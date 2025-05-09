@@ -354,16 +354,17 @@ class Simplifier(BaseVisitor):
             for i, sym in enumerate(self.global_declarations):
                 if isinstance(sym, Sym) and (sym.name == typename.name):
                     if isinstance(sym, StructSym):
-                        return AST.StructLiteral(typename.name, [])
+                        return ConcreteStructLiteral(sym.original_ast, [])
                     elif isinstance(sym, InterfaceSym):
                         return AST.NilLiteral()
                     elif (isinstance(sym, ConstSym) or isinstance(sym, VarSym)) and (isinstance(scoping, List) or (i < scoping)):
                         raise BadCoverage()
             raise BadCoverage()
+        elif isinstance(typename, AST.StructType):
+            return ConcreteStructLiteral(typename, [])
         return AST.NilLiteral()
 
     # Unified from global_comptime_evaluate and local_comptime_evaluate.
-    # Just roll our own recursion here instead of using ASTSimplifier's cancerous visitor mechanism.
     # For global consts:
     #   - pass an int as a global scope object index limit.
     # For local consts:
@@ -409,12 +410,12 @@ class Simplifier(BaseVisitor):
         elif isinstance(ast, AST.FieldAccess):
             receiver = self.comptime_evaluate(ast.receiver, scoping)
             field = ast.field
-            if not isinstance(receiver, AST.StructLiteral):
+            if not isinstance(receiver, ConcreteStructLiteral):
                 raise BadCoverage()
 
             q: Optional[Tuple[str, AST.Expr]] = next(filter(lambda t: t[0] == field, receiver.elements), None)
             if q is None:
-                field_type = next(filter(lambda x: x[0] == field, receiver.elements))[1]
+                field_type = next(filter(lambda x: x[0] == field, receiver.struct.elements))[1]
                 return self.make_default_value(field_type, scoping)
             return self.comptime_evaluate(q[1], scoping)
 
@@ -588,7 +589,7 @@ class Simplifier(BaseVisitor):
             return sym.original_ast
 
         sym.being_checked = True
-        sym.original_ast.element = [(name, self.global_resolve_typename(typename, index_limit)) for name, typename in sym.original_ast.element]
+        sym.original_ast.elements = [(name, self.global_resolve_typename(typename, index_limit)) for name, typename in sym.original_ast.elements]
         sym.being_checked = False
         sym.done_resolving = True
         return sym.original_ast
@@ -1025,6 +1026,7 @@ class Simplifier(BaseVisitor):
 
     def visitArrayCell(self, ast: AST.ArrayCell, given_scope: List[CtxObject]):
         receiver_expr, receiver_type = self.visit(ast.arr, given_scope) # No need to append IsExpressionVisit.
+        ast.arr = receiver_expr
         ast.idx = [self.visit(it, given_scope)[0] for it in ast.idx]
         if len(receiver_type.dimens) == len(ast.idx):
             return ast, receiver_type.eleType
@@ -1032,8 +1034,7 @@ class Simplifier(BaseVisitor):
 
     def visitFieldAccess(self, ast: AST.FieldAccess, given_scope: List[CtxObject]):
         receiver_expr, receiver_type = self.visit(ast.receiver, given_scope) # No need to append IsExpressionVisit.
-        if not isinstance(receiver_type, AST.StructType):
-            raise BadCoverage()
+        ast.receiver = receiver_expr
         f_name, f_type = next(filter(lambda x: x[0] == ast.field, receiver_type.elements))
         return ast, f_type
 
@@ -1068,7 +1069,7 @@ class Simplifier(BaseVisitor):
             simplified_initializer = self.maybe_wrap_cast_a_to_b(field_initializer_type, target_struct_field_type, simplified_initializer)
             new_elements.append((field_name, simplified_initializer))
 
-        return ConcreteStructLiteral(struct, new_elements)
+        return ConcreteStructLiteral(struct, new_elements), struct
 
     def visitNilLiteral(self, ast, param):
         return SimplifierNilType()
@@ -1077,12 +1078,40 @@ class Simplifier(BaseVisitor):
 
 class CodeGenerator(BaseVisitor,Utils):
     emit: Optional[Emitter]
+    simplifier: Optional[Simplifier]
+
+    # Copied from StaticCheck/Simplifier but without any scoping and type resolution logic since it's all smooth sailing from here thanks to Simplifier just getting rid of AST.Id-as-types
+    def make_default_value_ast(self, typename: AST.Type, make_nested_list: bool = False):
+        if isinstance(typename, AST.IntType):
+            return AST.IntLiteral(0)
+        elif isinstance(typename, AST.FloatType):
+            return AST.FloatLiteral(0.0)
+        elif isinstance(typename, AST.StringType):
+            return AST.StringLiteral("\"\"")
+        elif isinstance(typename, AST.BoolType):
+            return AST.BooleanLiteral(False)
+        elif isinstance(typename, AST.ArrayType):
+            # Sanity check.
+            d = typename.dimens[0]
+            if not isinstance(d, AST.IntLiteral):
+                raise BadCoverage()
+            child_type = AST.ArrayType(typename.dimens[1:], typename.eleType) if len(typename.dimens) > 1 else typename.eleType
+            vals: AST.NestedList = [self.make_default_value_ast(child_type, True) for _ in range(d.value)]
+            if make_nested_list:
+                return vals
+            return AST.ArrayLiteral(typename.dimens, typename.eleType, vals)
+        elif isinstance(typename, AST.Id):
+            raise BadCoverage()
+        elif isinstance(typename, AST.StructType):
+            return ConcreteStructLiteral(typename, [])
+        return AST.NilLiteral()
 
     def __init__(self):
         self.className = "MiniGoClass"
         self.astTree = None
         self.path = None
         self.emit = None
+        self.simplifier = None
 
     def init(self):
         mem = [
@@ -1103,8 +1132,10 @@ class CodeGenerator(BaseVisitor,Utils):
         return mem
 
     def gen(self, ast, dir_):
-        simplifier = Simplifier(ast)
-        simplified = simplifier.simplify()
+        self.simplifier = Simplifier(ast)
+        simplified = self.simplifier.simplify()
+
+        
 
         gl = self.init()
         self.astTree = simplified
@@ -1112,30 +1143,31 @@ class CodeGenerator(BaseVisitor,Utils):
         self.emit = Emitter(dir_ + "/" + self.className + ".j")
         self.visit(simplified, gl)
 
-    def emitObjectInit(self):
+    def emitObjectInit(self, className=None):
+        if className is None:
+            className = self.className
         frame = Frame("<init>", AST.VoidType())
-        self.emit.printout(self.emit.emitMETHOD("<init>", StaticCheck.MType([], AST.VoidType()), False, frame))  # Bắt đầu định nghĩa phương thức <init>
+        self.emit.printout(self.emit.emitMETHOD("<init>", StaticCheck.MType([], AST.VoidType()), False, frame))
         frame.enterScope(True)
-        self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "this", ClassType(self.className), frame.getStartLabel(), frame.getEndLabel(), frame))  # Tạo biến "this" trong phương thức <init>
+        self.emit.printout(self.emit.emitVAR(frame.getNewIndex(), "this", ClassType(className), frame.getStartLabel(), frame.getEndLabel(), frame))
 
         self.emit.printout(self.emit.emitLABEL(frame.getStartLabel(), frame))
-        self.emit.printout(self.emit.emitREADVAR("this", ClassType(self.className), 0, frame))
+        self.emit.printout(self.emit.emitREADVAR("this", ClassType(className), 0, frame))
         self.emit.printout(self.emit.emitINVOKESPECIAL(frame))
-
 
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
         self.emit.printout(self.emit.emitRETURN(AST.VoidType(), frame))
-        self.emit.printout(self.emit.emitENDMETHOD(frame))
+        self.emit.printout(self.emit.emitENDMETHOD(frame) + "\n")
         frame.exitScope()
 
     # Visitor methods
 
     def visitProgram(self, ast, c):
-        env ={}
-        env['env'] = [c]
+        env = {'env': [c]}
         self.emit.printout(self.emit.emitPROLOG(self.className, "java.lang.Object", False))
-        env = reduce(lambda a,x: self.visit(x,a), ast.decl, env)
+        env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: not (isinstance(x, AST.StructType) or isinstance(x, AST.InterfaceType)), ast.decl), env)
         self.emitObjectInit()
+        env = reduce(lambda a,x: self.visit(x, a), filter(lambda x: isinstance(x, AST.StructType) or isinstance(x, AST.InterfaceType), ast.decl), env)
         self.emit.printout(self.emit.emitEPILOG())
         return env
 
@@ -1210,8 +1242,59 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitArrayType(self, ast, param):
         return None
 
-    def visitStructType(self, ast, param):
-        return None
+    def visitStructType(self, ast: AST.StructType, o):
+        sub_emit = Emitter(self.path + "/" + ast.name + ".j")
+        old_emit = self.emit
+        self.emit = sub_emit
+
+        cls_type = ClassType(ast.name)
+        fields_with_normalized_types = [(field_name, ClassType(field_type.name)) if isinstance(field_type, AST.StructType) or isinstance(field_type, AST.InterfaceType) else (field_name, field_type) for field_name, field_type in ast.elements]
+
+        # Class prologue
+        sub_emit.printout(sub_emit.emitPROLOG(ast.name, "java.lang.Object", False))
+
+        # Make fields
+        for field_name, normalized_field_type in fields_with_normalized_types:
+            sub_emit.printout(sub_emit.emitINSTANCEFIELD(f"public {field_name}", normalized_field_type, False, None))
+
+        # Make <init> method
+        frame = Frame("<init>", AST.VoidType())
+        frame.enterScope(True)
+        init_start_label = frame.getStartLabel()
+        init_end_label = frame.getEndLabel()
+        initializer_mtype = StaticCheck.MType([normalized_field_type for field_name, normalized_field_type in fields_with_normalized_types], AST.VoidType())
+        sub_emit.printout(sub_emit.emitMETHOD("<init>", initializer_mtype, False, frame))
+        ## Emit this-var
+        sub_emit.printout(sub_emit.emitVAR(frame.getNewIndex(), "this", cls_type, init_start_label, init_end_label, frame))
+        ## Emit parameters-as-variables
+        [sub_emit.printout(sub_emit.emitVAR(frame.getNewIndex(), field_name, normalized_field_type, init_start_label, init_end_label, frame)) for field_name, normalized_field_type in fields_with_normalized_types]
+        sub_emit.printout(sub_emit.emitLABEL(init_start_label, frame))
+        ## Just have a `this` ready.
+        sub_emit.printout(sub_emit.emitREADVAR("this", cls_type, 0, frame))
+        ## Call <init> of base object (java.lang.Object)
+        sub_emit.printout(sub_emit.emitDUP(frame))
+        sub_emit.printout(sub_emit.emitINVOKESPECIAL(frame)) # pops the duplicated this
+        ## Emit assignments from those variables to the fields they're meant for
+        [
+            sub_emit.printout(
+                sub_emit.emitDUP(frame) +
+                sub_emit.emitREADVAR("this", normalized_field_type, i + 1, frame) +
+                sub_emit.emitPUTFIELD(f"{ast.name}/{field_name}", normalized_field_type, frame)
+            )
+            for i, (field_name, normalized_field_type) in enumerate(fields_with_normalized_types)
+        ]
+
+        sub_emit.printout(sub_emit.emitLABEL(frame.getEndLabel(), frame))
+        sub_emit.printout(sub_emit.emitRETURN(AST.VoidType(), frame))
+        sub_emit.printout(sub_emit.emitENDMETHOD(frame))
+        frame.exitScope()
+
+        self.emitObjectInit(ast.name)
+        sub_emit.emitEPILOG()
+
+        self.emit = old_emit
+
+        return o
 
     def visitInterfaceType(self, ast, param):
         return None
@@ -1252,8 +1335,20 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitBreak(self, ast, param):
         return None
 
-    def visitReturn(self, ast, param):
-        return None
+    def visitReturn(self, ast: AST.Return, o):
+        frame = o["frame"]
+        if ast.expr is None:
+            j = self.emit.emitRETURN(AST.VoidType(), frame)
+            self.emit.printout(j)
+            return o
+
+        r_j, r_ty = self.visit(ast.expr, o)
+        if isinstance(r_ty, AST.StructType) or isinstance(r_ty, AST.InterfaceType):
+            r_ty = ClassType(r_ty.name)
+        self.emit.printout(r_j)
+        self.emit.printout(self.emit.emitRETURN(r_ty, frame))
+
+        return o
 
     def visitBinaryOp(self, ast, o):
         if "frame" not in o:
@@ -1325,8 +1420,16 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitArrayCell(self, ast, param):
         return None
 
-    def visitFieldAccess(self, ast, param):
-        return None
+    def visitFieldAccess(self, ast: AST.FieldAccess, o):
+        l_j, l_ty = self.visit(ast.receiver, o)
+        if not isinstance(l_ty, AST.StructType):
+            raise BadCoverage()
+        field_type = next(filter(lambda x: x[0] == ast.field, l_ty.elements))[1]
+        cls = field_type
+        if isinstance(cls, AST.StructType) or isinstance(cls, AST.InterfaceType):
+            cls = ClassType(cls.name)
+        frame = o["frame"]
+        return l_j + self.emit.emitGETFIELD(f"{l_ty.name}/{ast.field}", cls, frame), field_type
 
     def visitIntLiteral(self, ast: AST.IntLiteral, o):
         if "frame" not in o:
@@ -1360,8 +1463,25 @@ class CodeGenerator(BaseVisitor,Utils):
     def visitConcreteStructLiteral(self, ast: ConcreteStructLiteral, o):
         if "frame" not in o:
             return "", ClassType(ast.struct.name)
+        frame = o["frame"]
 
+        j_new = self.emit.emitNEW(ast.struct.name, frame)
+        j_dup = self.emit.emitDUP(frame)
 
+        field_initializers = []
+
+        for field_name, field_type in ast.struct.elements:
+            # find the initializer
+            maybe_init: Optional[Tuple[str, AST.Expr]] = next(filter(lambda x: x[0] == field_name, ast.elements), None)
+            if maybe_init is None:
+                field_init_j, field_init_ty = self.visit(self.make_default_value_ast(field_type), o)
+            else:
+                field_init_j, field_init_ty = self.visit(maybe_init[1], o)
+            field_initializers.append(field_init_j)
+
+        constructor_mtype = StaticCheck.MType([ClassType(field_type.name) if isinstance(field_type, AST.StructType) else field_type for field_name, field_type in ast.struct.elements], AST.VoidType())
+        j_invoke_constructor = self.emit.emitINVOKESPECIAL(frame, f"{ast.struct.name}/<init>", constructor_mtype)
+        return j_new + j_dup + ''.join(field_initializers) + j_invoke_constructor, ast.struct
 
     def visitNilLiteral(self, ast, o):
         if "frame" not in o:
