@@ -2,6 +2,7 @@
  * @author nghia.ho310pf
  * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
 """
+import inspect
 from typing import Optional, List, Dict, Union, Tuple
 
 import AST
@@ -12,6 +13,11 @@ from Frame import Frame
 from abc import ABC
 from functools import reduce
 from Visitor import BaseVisitor
+
+def print_callstack():
+    stack = inspect.stack()
+    call_names = [frame.function + "()" for frame in reversed(stack[1:]) if frame.function not in ["accept"]]
+    print(" -> ".join(call_names))
 
 class Val(ABC):
     pass
@@ -1215,7 +1221,12 @@ class CodeGenerator(BaseVisitor,Utils):
         env['env'] = [[]] + env['env']
         env['frame'].enterScope(False)
         self.emit.printout(self.emit.emitLABEL(env['frame'].getStartLabel(), env['frame']))
-        env = reduce(lambda acc,e: self.visit(e,acc),ast.member,env)
+        for e in ast.member:
+            if isinstance(e, AST.Expr):
+                j, ty = self.visit(e, env)
+                self.emit.printout(j)
+            else:
+                env = self.visit(e, env)
         self.emit.printout(self.emit.emitLABEL(env['frame'].getEndLabel(), env['frame']))
         env['frame'].exitScope()
         return o
@@ -1293,19 +1304,23 @@ class CodeGenerator(BaseVisitor,Utils):
         sym = next(filter(lambda x: x.name == ast.funName, o['env'][-1]),None)
         env = o.copy()
         env['isLeft'] = False
-        [self.emit.printout(self.visit(x, env)[0]) for x in ast.args]
-        self.emit.printout(self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}",sym.mtype, o['frame']))
-        return o
+        args = [self.visit(x, env)[0] for x in ast.args]
+        j = self.emit.emitINVOKESTATIC(f"{sym.value.value}/{ast.funName}", sym.mtype, o['frame'])
+        return ''.join(args) + j, sym.mtype
 
     def visitMethCall(self, ast, param):
         return None
 
     def visitId(self, ast, o):
-        sym = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i]),None)
-        if type(sym.value) is Index:
-            return self.emit.emitREADVAR(ast.name, sym.mtype, sym.value.value, o['frame']),sym.mtype
+        sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]),None) # reverse the damn thing!
+        is_left = ("isLeft" in o) and o["isLeft"]
+        val = sym.value
+        frame = o["frame"]
+        if is_left:
+            j = self.emit.emitWRITEVAR(ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitPUTSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
         else:
-            return self.emit.emitGETSTATIC(f"{self.className}/{sym.name}",sym.mtype,o['frame']),sym.mtype
+            j = self.emit.emitREADVAR(ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitGETSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
+        return j, sym.mtype
 
     def visitArrayCell(self, ast, param):
         return None
@@ -1343,7 +1358,10 @@ class CodeGenerator(BaseVisitor,Utils):
         raise BadCoverage()
 
     def visitConcreteStructLiteral(self, ast: ConcreteStructLiteral, o):
-        pass
+        if "frame" not in o:
+            return "", ClassType(ast.struct.name)
+
+
 
     def visitNilLiteral(self, ast, o):
         if "frame" not in o:
