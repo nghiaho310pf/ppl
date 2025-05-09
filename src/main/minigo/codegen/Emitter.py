@@ -1,3 +1,8 @@
+"""
+ * @author nghia.ho310pf
+ * @note https://www.youtube.com/watch?v=I5aT1fRa9Mc
+ * @note https://www.youtube.com/watch?v=rCWrqSqhcJ8
+"""
 import AST
 import CodeGenError
 import StaticCheck
