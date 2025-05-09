@@ -14,11 +14,6 @@ from abc import ABC
 from functools import reduce
 from Visitor import BaseVisitor
 
-def print_callstack():
-    stack = inspect.stack()
-    call_names = [frame.function + "()" for frame in reversed(stack[1:]) if frame.function not in ["accept"]]
-    print(" -> ".join(call_names))
-
 class Val(ABC):
     pass
 
@@ -1168,7 +1163,7 @@ class CodeGenerator(BaseVisitor,Utils):
         self.emit.printout(self.emit.emitEPILOG())
         return env
 
-    def visitVarDecl(self, ast, o):
+    def visitVarDecl(self, ast: AST.VarDecl, o):
         if 'frame' not in o: # global var
             o['env'][0].append(StaticCheck.Symbol(ast.varName, ast.varType, CName(self.className)))
             self.emit.printout(self.emit.emitATTRIBUTE(ast.varName, ast.varType, True, False, str(ast.varInit.value) if ast.varInit else None))
@@ -1177,8 +1172,9 @@ class CodeGenerator(BaseVisitor,Utils):
             index = frame.getNewIndex()
             o['env'][0].append(StaticCheck.Symbol(ast.varName, ast.varType, Index(index)))
             self.emit.printout(self.emit.emitVAR(index, ast.varName, ast.varType, frame.getStartLabel(), frame.getEndLabel(), frame))
-            if ast.varInit:
-                self.emit.printout(self.emit.emitPUSHICONST(ast.varInit.value, frame))
+            if ast.varInit is not None:
+                init_j, init_ty = self.visit(ast.varInit, o)
+                self.emit.printout(init_j)
                 self.emit.printout(self.emit.emitWRITEVAR(ast.varName, ast.varType, index, frame))
         return o
 
@@ -1308,13 +1304,19 @@ class CodeGenerator(BaseVisitor,Utils):
             else:
                 old_env = env
                 env = self.visit(e, env)
-                print(f"{old_env} + {e} = {env}")
         self.emit.printout(self.emit.emitLABEL(env['frame'].getEndLabel(), env['frame']))
         env['frame'].exitScope()
         return o
 
-    def visitAssign(self, ast, param):
-        return None
+    def visitAssign(self, ast: AST.Assign, o):
+        rhs_j, rhs_ty = self.visit(ast.rhs, o)
+
+        o_lhs = o.copy()
+        o_lhs["isLeft"] = True
+
+        lhs_j, lhs_ty = self.visit(ast.lhs, o_lhs)
+        self.emit.printout(rhs_j + lhs_j)
+        return o
 
     def visitIf(self, ast: AST.If, o):
         frame: Frame = o["frame"]
