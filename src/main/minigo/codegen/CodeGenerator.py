@@ -137,12 +137,6 @@ class SimplifierIsTypenameVisit(SimplifierIdResolutionMode):
     def __init__(self):
         super().__init__()
 
-# For banning writes to consts.
-
-class SimplifierIsLeftHandSideVisit(CtxObject):
-    def __init__(self):
-        super().__init__()
-
 # For banning function/method calls and references to non-consts.
 
 class SimplifierIsComptimeExpressionVisit(CtxObject):
@@ -831,7 +825,7 @@ class Simplifier(BaseVisitor):
         return AST.Block(resulting_block)
 
     def visitAssign(self, ast: AST.Assign, given_scope: List[CtxObject]):
-        lhs_expr, lhs_type = self.visit(ast.lhs, given_scope + [SimplifierIsExpressionVisit(), SimplifierIsLeftHandSideVisit()])
+        lhs_expr, lhs_type = self.visit(ast.lhs, given_scope + [SimplifierIsExpressionVisit()])
         rhs_expr, rhs_type = self.visit(ast.rhs, given_scope + [SimplifierIsExpressionVisit()])
         return AST.Assign(lhs_expr, self.maybe_wrap_cast_a_to_b(rhs_type, lhs_type, rhs_expr))
 
@@ -1380,12 +1374,42 @@ class CodeGenerator(BaseVisitor,Utils):
         return o
 
     def visitAssign(self, ast: AST.Assign, o):
+        lhs_ast: AST.LHS = ast.lhs
+        frame: Frame = o["frame"]
+        if isinstance(lhs_ast, AST.Id):
+            prep_j = None
+            prep_ty = None
+        elif isinstance(lhs_ast, AST.FieldAccess):
+            prep_j, prep_ty = self.visit(lhs_ast.receiver, o)
+        elif isinstance(lhs_ast, AST.ArrayCell):
+            prep_j, prep_ty = self.visit(lhs_ast.arr, o)
+        else:
+            raise BadCoverage()
+
         rhs_j, rhs_ty = self.visit(ast.rhs, o)
 
-        o_lhs = o.copy()
-        o_lhs["isLeft"] = True
+        if isinstance(lhs_ast, AST.Id):
+            sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]), None) # reverse the damn thing!
+            val = sym.value
+            lhs_j = self.emit.emitWRITEVAR(lhs_ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitPUTSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
+        elif isinstance(lhs_ast, AST.FieldAccess):
+            if not isinstance(prep_ty, AST.StructType):
+                raise BadCoverage()
 
-        lhs_j, lhs_ty = self.visit(ast.lhs, o_lhs)
+            field_name = lhs_ast.field
+            field_type = next(filter(lambda x: x[0] == field_name, prep_ty.elements))[1]
+            lhs_j = self.emit.emitPUTFIELD(f"{prep_ty.name}/{lhs_ast.field}", field_type, frame)
+        elif isinstance(lhs_ast, AST.ArrayCell):
+            if not isinstance(prep_ty, AST.StructType):
+                raise BadCoverage()
+            idx_j, idx_ty = self.visit(lhs_ast.idx, o)
+            lhs_j = None
+            raise BadCoverage()
+        else:
+            raise BadCoverage()
+
+        if prep_j is not None:
+            self.emit.printout(prep_j)
         self.emit.printout(rhs_j)
         self.emit.printout(lhs_j)
         return o
@@ -1575,31 +1599,21 @@ class CodeGenerator(BaseVisitor,Utils):
 
     def visitId(self, ast, o):
         sym: StaticCheck.Symbol = next(filter(lambda x: x.name == ast.name, [j for i in o['env'] for j in i[::-1]]), None) # reverse the damn thing!
-        is_left = ("isLeft" in o) and o["isLeft"]
         val = sym.value
         frame: Frame = o["frame"]
-        if is_left:
-            j = self.emit.emitWRITEVAR(ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitPUTSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
-        else:
-            j = self.emit.emitREADVAR(ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitGETSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
+        j = self.emit.emitREADVAR(ast.name, sym.mtype, val.value, frame) if isinstance(val, Index) else self.emit.emitGETSTATIC(f"{self.className}/{sym.name}", sym.mtype, frame)
         return j, sym.mtype
 
     def visitArrayCell(self, ast, param):
         return None
 
     def visitFieldAccess(self, ast: AST.FieldAccess, o):
-        is_left = "isLeft" in o and o["isLeft"]
-        env = o.copy()
-        env["isLeft"] = False # the stuff under this can stay as GET; we're only storing 1 thing.
-        l_j, l_ty = self.visit(ast.receiver, env)
+        l_j, l_ty = self.visit(ast.receiver, o)
         if not isinstance(l_ty, AST.StructType):
             raise BadCoverage()
         field_type = next(filter(lambda x: x[0] == ast.field, l_ty.elements))[1]
         frame: Frame = o["frame"]
-        if is_left:
-            j = self.emit.emitPUTFIELD(f"{l_ty.name}/{ast.field}", field_type, frame)
-        else:
-            j = self.emit.emitGETFIELD(f"{l_ty.name}/{ast.field}", field_type, frame)
+        j = self.emit.emitGETFIELD(f"{l_ty.name}/{ast.field}", field_type, frame)
         return l_j + j, field_type
 
     def visitIntLiteral(self, ast: AST.IntLiteral, o):
