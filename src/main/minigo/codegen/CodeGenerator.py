@@ -1576,6 +1576,8 @@ class CodeGenerator(BaseVisitor, Utils):
             j = self.emit.emitANDOP(frame)
         elif ast.op == "||":
             j = self.emit.emitOROP(frame)
+        elif ast.op == "%":
+            j = self.emit.emitMOD(frame)
         else:
             j = self.emit.emitREOP(ast.op, l_ty, frame)
 
