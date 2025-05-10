@@ -182,10 +182,10 @@ class TestCodeGen():
             parser = MiniGoParser(tokens)
             tree = parser.program()
             asttree = ASTGeneration().visit(tree)
-            checker = StaticChecker(asttree)
-            checker.check()
         else:
             asttree = input
+        checker = StaticChecker(asttree)
+        checker.check()
 
         jasmin_output_path = f"./test/results/{num}"
         os.makedirs(jasmin_output_path, exist_ok=True)
