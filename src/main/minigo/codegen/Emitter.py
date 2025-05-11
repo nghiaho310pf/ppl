@@ -86,6 +86,9 @@ class Emitter():
         if isinstance(inType, AST.ArrayType):
             return "[" * len(inType.dimens) + self.getJVMType(inType.eleType)
 
+    def emitNOP(self, frame):
+        return JasminCode.INDENT + "nop" + JasminCode.END
+
     def emitPUSHICONST(self, in_, frame):
         #in: Int or Sring
         #frame: Frame
@@ -564,32 +567,67 @@ class Emitter():
         result.append(self.emitLABEL(labelO, frame))
         return ''.join(result)
 
-    def emitRELOP(self, op, in_, trueLabel, falseLabel, frame):
-        #op: String
-        #in_: Type
-        #trueLabel: Int
-        #falseLabel: Int
-        #frame: Frame
-        #..., value1, value2 -> ..., result
+    def emitRELOP(self, op, in_, true_label, false_label, frame):
+        # op: String
+        # in_: Type
+        # trueLabel: Int
+        # falseLabel: Int
+        # frame: Frame
+        # ..., value1, value2 -> ..., result
 
         result = list()
+        frame.pop()
+        frame.pop()
 
-        frame.pop()
-        frame.pop()
-        if op == ">":
-            result.append(self.jvm.emitIFICMPLE(falseLabel))
-            result.append(self.emitGOTO(trueLabel))
-        elif op == ">=":
-            result.append(self.jvm.emitIFICMPLT(falseLabel))
-        elif op == "<":
-            result.append(self.jvm.emitIFICMPGE(falseLabel))
-        elif op == "<=":
-            result.append(self.jvm.emitIFICMPGT(falseLabel))
-        elif op == "!=":
-            result.append(self.jvm.emitIFICMPEQ(falseLabel))
-        elif op == "==":
-            result.append(self.jvm.emitIFICMPNE(falseLabel))
-        result.append(self.jvm.emitGOTO(trueLabel))
+        if isinstance(in_, AST.IntType) or isinstance(in_, AST.BoolType):
+            if op == ">":
+                result.append(self.jvm.emitIFICMPLE(false_label))
+            elif op == ">=":
+                result.append(self.jvm.emitIFICMPLT(false_label))
+            elif op == "<":
+                result.append(self.jvm.emitIFICMPGE(false_label))
+            elif op == "<=":
+                result.append(self.jvm.emitIFICMPGT(false_label))
+            elif op == "!=":
+                result.append(self.jvm.emitIFICMPEQ(false_label))
+            elif op == "==":
+                result.append(self.jvm.emitIFICMPNE(false_label))
+
+        elif isinstance(in_, AST.FloatType):
+            result.append(self.jvm.emitFCMPL())
+            if op == "<=":
+                result.append(self.jvm.emitIFGT(false_label))
+            elif op == "<":
+                result.append(self.jvm.emitIFGE(false_label))
+            elif op == ">":
+                result.append(self.jvm.emitIFLE(false_label))
+            elif op == ">=":
+                result.append(self.jvm.emitIFLT(false_label))
+            elif op == "!=":
+                result.append(self.jvm.emitIFEQ(false_label))
+            elif op == "==":
+                result.append(self.jvm.emitIFNE(false_label))
+
+        elif isinstance(in_, AST.StringType):
+            if op in {"==", "!="}:
+                result.append(self.jvm.emitINVOKEVIRTUAL("java/lang/String/equals", "(Ljava/lang/Object;)Z"))
+                if op == "==":
+                    result.append(self.jvm.emitIFEQ(false_label))
+                else:  # op == "!="
+                    result.append(self.jvm.emitIFNE(false_label))
+            else:
+                result.append(self.jvm.emitINVOKEVIRTUAL("java/lang/String/compareTo", "(Ljava/lang/String;)I"))
+                if op == ">=":
+                    result.append(self.jvm.emitIFLE(false_label))
+                elif op == ">":
+                    result.append(self.jvm.emitIFLT(false_label))
+                elif op == "<":
+                    result.append(self.jvm.emitIFGE(false_label))
+                elif op == "<=":
+                    result.append(self.jvm.emitIFGT(false_label))
+
+        if true_label is not None:
+            result.append(self.jvm.emitGOTO(true_label))
         return ''.join(result)
 
     def emitINSTANCEFIELD(self, lexeme, typ, isFinal, value):

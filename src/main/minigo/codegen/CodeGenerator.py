@@ -762,8 +762,6 @@ class Simplifier(BaseVisitor):
         my_scope = given_scope.copy()
         for i, param in enumerate(ast.params):
             my_scope.append(FnParamSym(param.parName, ast.params[i].parType))
-        if not isinstance(ast.retType, AST.VoidType):
-            ast.body.member.append(AST.Return(self.make_unreachable_value(ast.retType)))
         ast.body = self.visit(ast.body, my_scope)
 
     def visitMethodDecl(self, ast: AST.MethodDecl, given_scope: List[CtxObject]):
@@ -1286,6 +1284,8 @@ class CodeGenerator(BaseVisitor, Utils):
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
         if type(ast.retType) is AST.VoidType:
             self.emit.printout(self.emit.emitRETURN(AST.VoidType(), frame))
+        else:
+            self.emit.printout(self.emit.emitNOP(frame))
         self.emit.printout(self.emit.emitENDMETHOD(frame))
         frame.exitScope()
         return o
@@ -1312,6 +1312,8 @@ class CodeGenerator(BaseVisitor, Utils):
         self.emit.printout(self.emit.emitLABEL(frame.getEndLabel(), frame))
         if type(ast.fun.retType) is AST.VoidType:
             self.emit.printout(self.emit.emitRETURN(AST.VoidType(), frame))
+        else:
+            self.emit.printout(self.emit.emitNOP(frame))
         self.emit.printout(self.emit.emitENDMETHOD(frame))
         frame.exitScope()
         return o
@@ -1471,6 +1473,28 @@ class CodeGenerator(BaseVisitor, Utils):
 
     def visitIf(self, ast: AST.If, o):
         frame: Frame = o["frame"]
+
+        if isinstance(ast.expr, AST.BinaryOp) and ast.expr.op in [">", ">=", "<", "<=", "!=", "=="]:
+            l_j, l_ty = self.visit(ast.expr.left, o)
+            r_j, r_ty = self.visit(ast.expr.right, o)
+
+            self.emit.printout(l_j)
+            self.emit.printout(r_j)
+
+            l1 = frame.getNewLabel()
+            self.emit.printout(self.emit.emitRELOP(ast.expr.op, l_ty, None, l1, frame))
+            self.visit(ast.thenStmt, o)
+
+            if ast.elseStmt is None:
+                self.emit.printout(self.emit.emitLABEL(l1, frame))
+            else:
+                l2 = frame.getNewLabel()
+                self.emit.printout(self.emit.emitGOTO(l2, frame))
+                self.emit.printout(self.emit.emitLABEL(l1, frame))
+                self.visit(ast.elseStmt, o)
+                self.emit.printout(self.emit.emitLABEL(l2, frame))
+
+            return o
         
         cond_j, cond_ty = self.visit(ast.expr, o)
 
@@ -1582,9 +1606,8 @@ class CodeGenerator(BaseVisitor, Utils):
 
         frame: Frame = o["frame"]
 
-        o2 = o.copy()
-        l_j, l_ty = self.visit(ast.left, o2)
-        r_j, r_ty = self.visit(ast.right, o2)
+        l_j, l_ty = self.visit(ast.left, o)
+        r_j, r_ty = self.visit(ast.right, o)
 
         if ast.op == "+" and isinstance(l_ty, AST.StringType):
             j = self.emit.emitSTRCONCAT(frame)
